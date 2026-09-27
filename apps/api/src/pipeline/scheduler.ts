@@ -1,5 +1,7 @@
 import cron from 'node-cron';
+import { prisma } from '../db.js';
 import { getSettings } from '../lib/candidate.js';
+import { refreshRegisterFromGovUk } from '../sponsors/register.js';
 import { hhmm } from '../lib/time.js';
 import { expireStaleTasks } from './execute.js';
 import { runCycle, type CycleAction } from './orchestrator.js';
@@ -35,8 +37,9 @@ export function startScheduler() {
     try {
       await expireStaleTasks();
       const s = await getSettings();
-      if (s.agentState !== 'RUNNING') return;
       const now = hhmm(s.timezone);
+      if (now === '07:30') await refreshSponsorsIfStale();
+      if (s.agentState !== 'RUNNING') return;
       if (now === lastFired) return;
       const due = ((s.schedule ?? []) as unknown as ScheduleEntry[]).filter((e) => e.time === now);
       if (!due.length) return;
@@ -51,4 +54,18 @@ export function startScheduler() {
     }
   });
   return () => task.stop();
+}
+
+/** Weekly refresh of the licensed sponsor register, only for candidates on the sponsorship route. */
+export async function refreshSponsorsIfStale(maxAgeDays = 7) {
+  const auth = await prisma.workAuthorisation.findFirst({ where: { seekingSponsoredRoleAfterCourse: true }, select: { id: true } });
+  if (!auth) return;
+  const meta = await prisma.sponsorRegisterMeta.findUnique({ where: { id: 1 } });
+  if (meta?.importedAt && Date.now() - meta.importedAt.getTime() < maxAgeDays * 86_400_000) return;
+  try {
+    const rows = await refreshRegisterFromGovUk();
+    console.log(`[sponsors] register refreshed: ${rows} entries`);
+  } catch (err) {
+    console.warn('[sponsors] refresh failed:', (err as Error).message);
+  }
 }

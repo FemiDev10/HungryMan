@@ -4,7 +4,7 @@ import * as z from 'zod/v4';
 import { env } from '../config/env.js';
 import type { CvSentence } from '../domain/cvBuilder.js';
 import type { AiEngine, CoverLetter, JobAnalysis } from './engine.js';
-import { COVER_LETTER_PROMPT, CV_PLAN_PROMPT, JOB_ANALYSIS_PROMPT } from './prompts.js';
+import { COVER_LETTER_PROMPT, CV_IMPORT_PROMPT, CV_PLAN_PROMPT, JOB_ANALYSIS_PROMPT } from './prompts.js';
 
 const CATEGORIES = [
   'PRODUCT_DESIGN', 'UX', 'UX_RESEARCH', 'PRODUCT_MANAGEMENT', 'FRONTEND', 'SOFTWARE', 'AI', 'TECH_GENERAL',
@@ -38,6 +38,18 @@ const CvPlanSchema = z.object({
 
 const CoverLetterSchema = z.object({ paragraphs: z.array(z.array(SentenceSchema)) });
 
+const CAT = z.enum(CATEGORIES);
+export const CvImportSchema = z.object({
+  personal: z.object({ fullName: z.string().nullable(), email: z.string().nullable(), phone: z.string().nullable(), city: z.string().nullable(), headline: z.string().nullable(), links: z.array(z.object({ label: z.string(), url: z.string() })) }),
+  employment: z.array(z.object({ ref: z.string(), employer: z.string(), title: z.string(), location: z.string().nullable(), startDate: z.string().nullable(), endDate: z.string().nullable(), current: z.boolean(), description: z.string().nullable(), tags: z.array(z.string()), categories: z.array(CAT) })),
+  education: z.array(z.object({ institution: z.string(), qualification: z.string(), field: z.string().nullable(), grade: z.string().nullable(), startDate: z.string().nullable(), endDate: z.string().nullable(), inProgress: z.boolean() })),
+  projects: z.array(z.object({ ref: z.string(), name: z.string(), role: z.string().nullable(), url: z.string().nullable(), description: z.string().nullable(), shipped: z.boolean(), tags: z.array(z.string()), categories: z.array(CAT) })),
+  skills: z.array(z.object({ name: z.string(), categories: z.array(CAT) })),
+  certifications: z.array(z.object({ name: z.string(), issuer: z.string().nullable(), issuedAt: z.string().nullable() })),
+  evidence: z.array(z.object({ kind: z.enum(['EXPERIENCE', 'ACHIEVEMENT', 'SKILL', 'PROJECT', 'EDUCATION', 'CERTIFICATION', 'TRAIT', 'OTHER']), claim: z.string(), employmentRef: z.string().nullable(), projectRef: z.string().nullable(), categories: z.array(CAT), tags: z.array(z.string()) })),
+});
+export type CvImport = z.infer<typeof CvImportSchema>;
+
 /**
  * Claude-backed engine. Uses structured outputs so responses are schema-valid, and
  * server-side refusal fallbacks. Everything it produces is re-validated against the
@@ -47,7 +59,7 @@ export class ClaudeAiEngine implements AiEngine {
   readonly name = 'claude';
   private client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 3 });
 
-  private async call<T>(system: string, user: string, schema: z.ZodType<T>, effort: 'low' | 'medium' | 'high'): Promise<T> {
+  private async call<T>(system: string, user: string | Anthropic.Beta.Messages.BetaContentBlockParam[], schema: z.ZodType<T>, effort: 'low' | 'medium' | 'high'): Promise<T> {
     const response = await this.client.beta.messages.parse({
       model: env.CLAUDE_MODEL,
       max_tokens: 16000,
@@ -139,5 +151,15 @@ export class ClaudeAiEngine implements AiEngine {
       'medium',
     );
     return { paragraphs: r.paragraphs as CvSentence[][], engine: this.name, promptVersion: COVER_LETTER_PROMPT.version };
+  }
+
+  /** Extract draft profile records from an uploaded CV (PDF as a document block, DOCX as text). */
+  async importCv(file: { pdfBase64?: string; text?: string; fileName: string }): Promise<{ data: CvImport; promptVersion: string }> {
+    const instruction = `Extract draft records from this CV (${file.fileName}).`;
+    const content: Anthropic.Beta.Messages.BetaContentBlockParam[] = file.pdfBase64
+      ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: file.pdfBase64 } }, { type: 'text', text: instruction }]
+      : [{ type: 'text', text: `<cv>\n${(file.text ?? '').slice(0, 60000)}\n</cv>\n\n${instruction}` }];
+    const data = await this.call(CV_IMPORT_PROMPT.system, content, CvImportSchema, 'medium');
+    return { data, promptVersion: CV_IMPORT_PROMPT.version };
   }
 }

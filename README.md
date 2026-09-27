@@ -6,6 +6,13 @@ A private web app that searches for jobs and applies to them:
 
 It runs automatically. You're only pulled in when something genuinely needs you: a CAPTCHA, a video question, a login, an unanswered question, or an eligibility decision. One stuck application never blocks the queue.
 
+## Built for a UK student on two tracks
+
+- **Full-time professional roles, starting after your course**, with Skilled Worker sponsorship. You can apply now, but the job can only start once your course has ended. The agent applies only where the advert offers sponsorship or the employer is on the gov.uk **register of licensed sponsors**, which is downloaded weekly. It skips "no sponsorship" adverts and immediate-start roles. On the form it answers sponsorship **Yes** and gives your course end date as the start.
+- **Part-time work now**, within your term-time hours limit (e.g. stadium stewarding, fast-food night shifts, kitchen porter). Pay is estimated per month (hours capped at your limit) and the queue ranks jobs towards your monthly income goal. Forms state your hours restriction honestly.
+- **CV import:** upload your CV (PDF/DOCX) and Claude turns it into **draft** records. The agent can't use anything until you approve it.
+- **Warm-up:** the first 3 applications stop before submit for you to check. After that it runs automatically.
+
 ## Ground rules built into the code
 
 - **The candidate database is the source of truth, not a CV.** Every CV bullet is an exact `Evidence` claim. Every summary sentence cites the evidence behind it, and `domain/claimValidation.ts` rejects anything unsupported: invented numbers, skills or tools you haven't recorded, or evidence marked as not allowed on CVs. If an AI-written summary fails validation, it's replaced with the evidence-only version.

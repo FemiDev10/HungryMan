@@ -57,8 +57,20 @@ suite('end-to-end pipeline (mock browser agent)', () => {
   });
 
   it('imports and analyses jobs into the correct outcomes', async () => {
-    // Pin "today" to term time for deterministic eligibility.
-    await agent.put('/api/settings').send({ termTimeOverride: 'TERM' }).expect(200);
+    // Pin "today" to term time for deterministic eligibility; warm-up is tested separately.
+    await agent.put('/api/settings').send({ termTimeOverride: 'TERM', reviewFirstN: 0 }).expect(200);
+
+    // Licensed sponsor register (the real one comes from gov.uk)
+    const filler = Array.from({ length: 12 }, (_, i) => `"Filler Employer ${i} Ltd","Leeds",,"Worker (A rating)","Skilled Worker"`);
+    const csv = ['"Organisation Name","Town/City","County","Type & Rating","Route"', '"Demo Bank Ltd","London",,"Worker (A rating)","Skilled Worker"', ...filler].join('\n');
+    await agent.post('/api/sponsors/upload').send({ csvBase64: Buffer.from(csv).toString('base64') }).expect(200);
+    const check = await agent.get('/api/sponsors/check?company=Demo%20Bank').expect(200);
+    expect(check.body.result).toMatchObject({ licensed: true });
+
+    // An imported-but-unreviewed claim must never reach a CV
+    const cand = await agent.get('/api/candidate').expect(200);
+    const designJob = cand.body.employment.find((e: { employer: string }) => e.employer === 'Demo Fintech Ltd');
+    await agent.post('/api/candidate/evidence').send({ kind: 'ACHIEVEMENT', claim: 'Scaled Kubernetes clusters for 40 products', source: 'Imported from CV', categories: ['PRODUCT_DESIGN'], tags: ['fintech'], employmentId: designJob.id, status: 'DRAFT' }).expect(201);
     const results: Record<string, { status: string; category: string; profile: string | null; eligibility: string }> = {};
     for (const j of DEMO_JOBS) {
       const r = await agent.post('/api/jobs/import').send(j).expect(201);
@@ -70,18 +82,26 @@ suite('end-to-end pipeline (mock browser agent)', () => {
     expect(results['Cleaner']).toMatchObject({ status: 'REJECTED_BY_RULE', eligibility: 'NOT_ELIGIBLE' });
     // Licence required that the candidate doesn't have
     expect(results['Security Officer'].status).toBe('REJECTED_BY_RULE');
-    // Full-time professional role during term: good match, but eligibility needs a human decision
-    expect(results['Product Designer']).toMatchObject({ status: 'NEEDS_HUMAN', profile: 'product-designer', eligibility: 'REQUIRES_REVIEW' });
+    // Full-time professional role at a licensed sponsor: applied for, to start after the course
+    expect(results['Product Designer']).toMatchObject({ status: 'QUEUED', profile: 'product-designer', eligibility: 'POTENTIALLY_ELIGIBLE' });
+    // Silent advert from an employer not on the register: skipped
+    expect(results['UX Designer']).toMatchObject({ status: 'REJECTED_BY_RULE', eligibility: 'NOT_ELIGIBLE' });
+    // Stadium stewarding gets the steward CV
+    expect(results['Matchday Steward']).toMatchObject({ status: 'QUEUED', category: 'SECURITY', profile: 'stadium-steward', eligibility: 'ELIGIBLE' });
 
     // Dedupe: same job again from "another source"
     const dup = await agent.post('/api/jobs/import').send({ ...DEMO_JOBS[1], url: 'https://other.example.com/kp' }).expect(201);
     expect(dup.body.application.status).toBe('DUPLICATE');
   });
 
-  it('human review requeues the professional role', async () => {
-    const ex = await agent.get('/api/applications?view=exceptions').expect(200);
-    const pd = ex.body.items.find((i: { job: { title: string } }) => i.job.title === 'Product Designer');
-    await agent.post(`/api/applications/${pd.id}/resolve`).send({ action: 'REQUEUE', note: 'Start date is after my course ends' }).expect(200);
+  it('records the work context, sponsor match and income estimate', async () => {
+    const q = await agent.get('/api/applications?view=queue&pageSize=50').expect(200);
+    const pd = q.body.items.find((i: { job: { title: string } }) => i.job.title === 'Product Designer');
+    expect(pd.workContext).toBe('SPONSORED_AFTER_COURSE');
+    expect(pd.job.sponsorLicensed).toBe(true);
+    const steward = q.body.items.find((i: { job: { title: string } }) => i.job.title === 'Matchday Steward');
+    expect(steward.workContext).toBe('STUDENT_PART_TIME');
+    expect(steward.job.estMonthlyPay).toBe(Math.round((12.6 * 12 * 52) / 12));
   });
 
   it('runs a full cycle: tailored CVs, validation, browser execution, verification', async () => {
@@ -101,6 +121,7 @@ suite('end-to-end pipeline (mock browser agent)', () => {
     const pd = by('Product Designer');
     expect(pd.status).toBe('SUBMITTED');
     expect(pd.cvFileName).toMatch(/PRODUCT-DESIGNER/);
+    expect(by('Matchday Steward').cvFileName).toMatch(/STADIUM-STEWARD/);
 
     // CAPTCHA → BLOCKED, and it did not stop the queue
     expect(by('Retail Assistant').status).toBe('BLOCKED');
@@ -110,10 +131,17 @@ suite('end-to-end pipeline (mock browser agent)', () => {
     const cv = detail.body.documents.find((d: { kind: string }) => d.kind === 'CV');
     expect(cv.validation.valid).toBe(true);
     expect(detail.body.documents.some((d: { kind: string }) => d.kind === 'COVER_LETTER')).toBe(true);
-    expect(detail.body.answerSets[0].answers.find((a: { key: string }) => a.key === 'right_to_work_uk').answer).toBe('Yes');
+    const ans = (d: { body: { answerSets: { answers: { key: string; answer: string }[] }[] } }, k: string) => d.body.answerSets[0].answers.find((a) => a.key === k)!.answer;
+    // Full-time role after the course: honest sponsorship + start date answers
+    expect(ans(detail, 'requires_sponsorship')).toBe('Yes');
+    expect(ans(detail, 'earliest_start')).toMatch(/15 January 2027/);
+    expect(ans(detail, 'right_to_work_uk')).toMatch(/Skilled Worker/);
+    expect(JSON.stringify(detail.body.documents)).not.toContain('Kubernetes'); // draft evidence never used
     const types = detail.body.audit.map((a: { type: string }) => a.type);
     for (const t of ['JOB_DISCOVERED', 'JOB_CLASSIFIED', 'MATCH_CALCULATED', 'CV_GENERATED', 'CV_VALIDATED', 'BROWSER_STARTED', 'CV_UPLOADED', 'SUBMISSION_CONFIRMED']) expect(types).toContain(t);
     const kpDetail = await agent.get(`/api/applications/${kp.id}`).expect(200);
+    expect(ans(kpDetail, 'requires_sponsorship')).toBe('No');
+    expect(ans(kpDetail, 'right_to_work_uk')).toMatch(/20 hours per week/);
     expect(kpDetail.body.documents.some((d: { kind: string }) => d.kind === 'COVER_LETTER')).toBe(false);
 
     // Kitchen porter CV contains no design claims
@@ -134,7 +162,8 @@ suite('end-to-end pipeline (mock browser agent)', () => {
 
     const overview = await agent.get('/api/dashboard/overview').expect(200);
     expect(overview.body.today.submitted).toBeGreaterThanOrEqual(2);
-    expect(overview.body.today.needsAttention).toBe(1);
+    expect(overview.body.today.needsAttention).toBe(1); // the CAPTCHA
+    expect(overview.body.income.goal).toBe(1000);
   });
 
   it('supports the Cowork handoff protocol', async () => {
@@ -180,6 +209,32 @@ suite('end-to-end pipeline (mock browser agent)', () => {
     await runCycle('FULL_CYCLE', { manual: true });
     const app = await agent.get(`/api/applications/${imp.body.application.id}`).expect(200);
     expect(app.body.application.status).toBe('QUEUED');
+  });
+
+  it('holds the first N applications for review before submitting (warm-up)', async () => {
+    await agent.put('/api/settings').send({ defaultBrowserAgent: 'mock', generalPerDay: 10, reviewFirstN: 1 }).expect(200);
+    // Clear the job left QUEUED by the daily-target test so it doesn't take the warm-up slot.
+    const leftover = await agent.get('/api/applications?view=queue&pageSize=50').expect(200);
+    for (const a of leftover.body.items) await agent.post(`/api/applications/${a.id}/skip`).send({}).expect(200);
+    const { runCycle } = await import('./pipeline/orchestrator.js');
+    const importAndRun = async (title: string) => {
+      const imp = await agent.post('/api/jobs/import').send({ url: `https://example.com/jobs/${title.replace(/\s/g, '-')}`, title, company: `Demo ${title} Co`, location: 'Sunderland', description: `Part-time ${title.toLowerCase()} role, 10 hours per week, cleaning offices in the evening. £12.40 per hour.` }).expect(201);
+      await runCycle('FULL_CYCLE', { manual: true });
+      return (await agent.get(`/api/applications/${imp.body.application.id}`).expect(200)).body.application;
+    };
+    const first = await importAndRun('Evening Cleaner');
+    expect(first).toMatchObject({ status: 'NEEDS_HUMAN', exceptionType: 'REVIEW_BEFORE_SUBMIT', warmUp: true });
+    await agent.post(`/api/applications/${first.id}/resolve`).send({ action: 'MARK_SUBMITTED' }).expect(200);
+    const second = await importAndRun('Office Cleaner');
+    expect(second).toMatchObject({ status: 'SUBMITTED', warmUp: false });
+  });
+
+  it('checklist reports setup state', async () => {
+    const r = await agent.get('/api/dashboard/checklist').expect(200);
+    const item = (k: string) => r.body.items.find((i: { key: string }) => i.key === k);
+    expect(item('sponsors').done).toBe(true);
+    expect(item('cv_review').done).toBe(false); // the draft claim is still waiting
+    expect(item('agent_token').done).toBe(true);
   });
 
   it('exports data', async () => {

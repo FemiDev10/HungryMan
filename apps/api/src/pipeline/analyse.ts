@@ -2,7 +2,8 @@ import type { CvProfile, Prisma, Settings } from '@prisma/client';
 import type { AiEngine } from '../ai/engine.js';
 import { prisma } from '../db.js';
 import { assessEligibility } from '../domain/eligibility.js';
-import { computeMatch } from '../domain/matching.js';
+import { computeMatch, estimateMonthlyPay } from '../domain/matching.js';
+import { lookupSponsor } from '../sponsors/register.js';
 import { selectCvProfile } from '../domain/profileSelection.js';
 import { trackForCategory } from '../domain/types.js';
 import { audit } from '../lib/audit.js';
@@ -64,10 +65,17 @@ export async function analyseApplication(applicationId: string, ctx: PipelineCon
     return transition(app.id, 'REJECTED_BY_RULE', { failureReason: `Category ${cls.category} is not a target category` }, { message: 'Not a target role', actor });
   }
 
-  // 2. Work eligibility (configurable rules)
-  const elig = assessEligibility(job, ctx.candidate.workAuthorisation, track, { now, periodOverride: ctx.settings.termTimeOverride });
-  job = await prisma.job.update({ where: { id: job.id }, data: { eligibility: elig.status, eligibilityDetails: json(elig) } });
-  await transition(app.id, 'ELIGIBILITY_CHECKED', { track }, { message: `Eligibility: ${elig.status}`, actor });
+  // 2. Work eligibility (configurable rules), using the licensed sponsor register for professional roles
+  if (track === 'PROFESSIONAL') {
+    const sponsor = await lookupSponsor(job.company);
+    job = await prisma.job.update({ where: { id: job.id }, data: { sponsorLicensed: sponsor?.licensed ?? null, sponsorMatchName: sponsor?.name ?? null } });
+  }
+  const auth = ctx.candidate.workAuthorisation;
+  const elig = assessEligibility(job, auth, track, { now, periodOverride: ctx.settings.termTimeOverride });
+  const hoursCap = elig.workContext === 'STUDENT_PART_TIME' && elig.period === 'TERM' ? auth?.termTimeHoursLimit ?? null : null;
+  const estMonthlyPay = track === 'GENERAL' || elig.workContext === 'STUDENT_PART_TIME' ? estimateMonthlyPay(job, hoursCap) : null;
+  job = await prisma.job.update({ where: { id: job.id }, data: { eligibility: elig.status, eligibilityDetails: json(elig), estMonthlyPay } });
+  await transition(app.id, 'ELIGIBILITY_CHECKED', { track, workContext: elig.workContext }, { message: `Eligibility: ${elig.status} (${elig.workContext})`, actor });
   await audit('ELIGIBILITY_CHECKED', `${elig.status}: ${elig.reasons.join(' ')}`, { applicationId: app.id, jobId: job.id, data: elig });
 
   // 3. Profile + match
@@ -86,7 +94,9 @@ export async function analyseApplication(applicationId: string, ctx: PipelineCon
     minScore,
   });
   await prisma.job.update({ where: { id: job.id }, data: { match: json({ ...match, profileReason: reason }), matchScore: match.score } });
-  await transition(app.id, 'MATCHED', { cvProfileId: profile?.id ?? null, priority: match.score }, { message: `Match ${match.score} → ${match.recommendation}`, actor });
+  // General work is ranked towards the income goal: better-paid jobs with more (allowed) hours first.
+  const priority = match.score + (estMonthlyPay ? Math.min(15, estMonthlyPay / 70) : 0);
+  await transition(app.id, 'MATCHED', { cvProfileId: profile?.id ?? null, priority }, { message: `Match ${match.score} → ${match.recommendation}`, actor });
   await audit('MATCH_CALCULATED', `Score ${match.score}; ${match.recommendation}. ${reason}`, { applicationId: app.id, jobId: job.id, data: match });
 
   // 4. Decide

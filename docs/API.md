@@ -144,3 +144,13 @@ Used by Claude Cowork / Claude in Chrome sessions. See `docs/BROWSER_AGENTS.md`.
 - `GET /agent-tasks/:taskId/files/:documentId` → the CV / cover letter file for that task only
 - `POST /agent-tasks/:taskId/events` `{type:'STEP'|'FIELD_FILLED'|'CV_UPLOADED'|'DOCUMENT_UPLOADED', step?, field?, detail?}`
 - `POST /agent-tasks/:taskId/result` → `BrowserResult` (see BROWSER_AGENTS.md)
+
+## Additions (student sponsorship route, CV import, warm-up)
+- `ApplicationRow` also has `workContext: 'STANDARD'|'STUDENT_PART_TIME'|'SPONSORED_AFTER_COURSE'|null`, `warmUp: boolean`, and `job.estMonthlyPay`, `job.sponsorLicensed`.
+- Candidate collections carry `status: 'DRAFT'|'APPROVED'`; only APPROVED records are used by the agent.
+- `POST /candidate/import-cv` `{fileName, contentBase64}` (PDF/DOCX; needs ANTHROPIC_API_KEY) → `{counts, candidate}`; everything is created as DRAFT.
+- `POST /candidate/review` `{items?: [{collection, id, action:'APPROVE'|'REJECT'}], approveAll?: boolean}` → `{approved, rejected, candidate}`
+- `PUT /candidate/work-authorisation` also takes `seekingSponsoredRoleAfterCourse`, `sponsoredRoleMinSalary`.
+- `GET /sponsors/status`, `POST /sponsors/refresh` (download from gov.uk), `POST /sponsors/upload {csvBase64}`, `GET /sponsors/check?company=`
+- `GET /dashboard/checklist` → `{items: [{key,label,done,detail,link,required}], ready}`; overview adds `income: {goal, secured, appliedPotential, appliedCount}`.
+- Settings add `reviewFirstN`, `monthlyIncomeGoal`. Exception type `REVIEW_BEFORE_SUBMIT` = warm-up application waiting for the user to submit.

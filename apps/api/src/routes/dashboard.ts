@@ -3,7 +3,10 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { ATTENTION, IN_QUEUE } from '../domain/stateMachine.js';
 import { audit } from '../lib/audit.js';
-import { getSettings } from '../lib/candidate.js';
+import { env, integrations } from '../config/env.js';
+import { getCandidate, getSettings } from '../lib/candidate.js';
+import { registerStatus } from '../sponsors/register.js';
+import { lastAgentPoll } from './agentTasks.js';
 import { startOfDay } from '../lib/time.js';
 import { runCycle } from '../pipeline/orchestrator.js';
 import { nextScheduled, type ScheduleEntry } from '../pipeline/scheduler.js';
@@ -62,6 +65,7 @@ dashboardRouter.get('/dashboard/overview', async (_req, res) => {
     agent: await agentStatusView(),
     queuePreview: queuePreview.sort((a, b) => order(a.status) - order(b.status) || b.priority - a.priority).slice(0, 12).map(toRow),
     recentNotifications,
+    income: await incomeSummary(settings.monthlyIncomeGoal),
   });
 });
 
@@ -121,4 +125,52 @@ dashboardRouter.post('/agent/control', async (req, res) => {
     }
   }
   res.json({ ok: true, message });
+});
+
+/** Estimated monthly pay (general-work jobs) against the income goal. */
+async function incomeSummary(goal: number) {
+  const [offers, applied] = await Promise.all([
+    prisma.job.aggregate({ _sum: { estMonthlyPay: true }, where: { application: { outcome: 'OFFER' } } }),
+    prisma.job.aggregate({ _sum: { estMonthlyPay: true }, _count: { _all: true }, where: { estMonthlyPay: { not: null }, application: { status: { in: ['SUBMITTED', 'SUBMISSION_ATTEMPTED'] }, outcome: { notIn: ['REJECTED', 'WITHDRAWN'] } } } }),
+  ]);
+  return { goal, secured: offers._sum.estMonthlyPay ?? 0, appliedPotential: applied._sum.estMonthlyPay ?? 0, appliedCount: applied._count._all };
+}
+
+interface ChecklistItem {
+  key: string;
+  label: string;
+  done: boolean;
+  detail: string;
+  link: string;
+  required: boolean;
+}
+
+dashboardRouter.get('/dashboard/checklist', async (_req, res) => {
+  const [c, settings, sponsors, unknownAnswers] = await Promise.all([
+    getCandidate(),
+    getSettings(),
+    registerStatus(),
+    prisma.answerTemplate.count({ where: { OR: [{ answer: 'UNKNOWN' }, { verified: false }] } }),
+  ]);
+  const auth = c.workAuthorisation;
+  const approvedEvidence = c.evidence.filter((e) => e.status === 'APPROVED').length;
+  const drafts = [c.evidence, c.employment, c.education, c.projects, c.skills, c.certifications].reduce((n, list) => n + list.filter((x) => x.status === 'DRAFT').length, 0);
+  const criteria = (settings.searchCriteria ?? {}) as Record<string, { keywords?: string[] }>;
+  const polls = [...lastAgentPoll.entries()].sort((a, b) => b[1].getTime() - a[1].getTime());
+  const lastPoll = polls[0];
+  const items: ChecklistItem[] = [
+    { key: 'profile', label: 'Personal details', done: c.fullName !== 'Your Name' && Boolean(c.email && c.phone && c.city), detail: 'Name, email, phone and city are used on every CV and form.', link: '/profile', required: true },
+    { key: 'cv_review', label: 'Review imported CV drafts', done: drafts === 0, detail: drafts ? `${drafts} draft item(s) waiting — the agent can't use them until you approve.` : 'No drafts waiting.', link: '/profile', required: false },
+    { key: 'evidence', label: 'Approved evidence', done: approvedEvidence >= 8, detail: `${approvedEvidence} approved claim(s). Aim for 8+ covering both design/tech work and general-work strengths.`, link: '/profile', required: true },
+    { key: 'work_auth', label: 'Work authorisation', done: Boolean(auth), detail: auth ? `${auth.visaType}${auth.termTimeHoursLimit != null ? `, ${auth.termTimeHoursLimit}h/week in term` : ''}` : 'Not set — eligibility checks will return UNKNOWN.', link: '/profile', required: true },
+    { key: 'course_end', label: 'Course end date', done: !auth || auth.termTimeHoursLimit == null || Boolean(auth.courseEnd), detail: 'Needed to state your earliest start date on full-time applications.', link: '/profile', required: true },
+    { key: 'sponsors', label: 'Licensed sponsor register', done: !auth?.seekingSponsoredRoleAfterCourse || sponsors.loaded, detail: sponsors.loaded ? `${sponsors.rows.toLocaleString('en-GB')} entries, imported ${sponsors.importedAt?.toISOString().slice(0, 10)}` : sponsors.lastError ?? 'Not loaded — full-time roles will wait for review.', link: '/settings', required: Boolean(auth?.seekingSponsoredRoleAfterCourse) },
+    { key: 'answers', label: 'Answer library', done: unknownAnswers === 0, detail: unknownAnswers ? `${unknownAnswers} answer(s) unknown or unverified — forms asking these will come to you.` : 'All answers verified.', link: '/answers', required: false },
+    { key: 'search', label: 'Search keywords & locations', done: Boolean(criteria.professional?.keywords?.length || criteria.general?.keywords?.length), detail: 'What the agent searches for on each track.', link: '/settings', required: true },
+    { key: 'claude', label: 'Claude API key', done: integrations.claude(), detail: integrations.claude() ? 'Connected.' : 'Optional, but needed for CV import and better tailoring.', link: '/settings', required: false },
+    { key: 'agent_token', label: 'Browser agent token', done: Boolean(env.AGENT_API_TOKEN), detail: 'AGENT_API_TOKEN in apps/api/.env — Claude in Chrome / Cowork uses it to fetch tasks.', link: '/settings', required: true },
+    { key: 'agent_connected', label: 'Browser agent connected', done: Boolean(lastPoll && Date.now() - lastPoll[1].getTime() < 24 * 3600_000), detail: lastPoll ? `${lastPoll[0]} last checked in ${lastPoll[1].toISOString()}` : 'No agent has checked in yet — see docs/BROWSER_AGENTS.md.', link: '/settings', required: true },
+    { key: 'running', label: 'Agent switched on', done: settings.agentState === 'RUNNING', detail: `Currently ${settings.agentState.toLowerCase()}. Press Resume on the Overview when the rest is ready.`, link: '/', required: true },
+  ];
+  res.json({ items, ready: items.filter((i) => i.required).every((i) => i.done) });
 });

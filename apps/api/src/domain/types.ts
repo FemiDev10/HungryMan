@@ -55,6 +55,8 @@ export interface JobLike {
   sponsorshipEvidence?: string | null;
   closingDate?: Date | null;
   postedAt?: Date | null;
+  sponsorLicensed?: boolean | null;
+  sponsorMatchName?: string | null;
 }
 
 export interface EvidenceLike {
@@ -69,6 +71,7 @@ export interface EvidenceLike {
   tags: string[];
   employmentId?: string | null;
   projectId?: string | null;
+  status?: 'DRAFT' | 'APPROVED';
 }
 
 export interface EmploymentLike {
@@ -83,6 +86,7 @@ export interface EmploymentLike {
   tags: string[];
   categories: JobCategory[];
   sortOrder?: number;
+  status?: 'DRAFT' | 'APPROVED';
 }
 
 export interface ProjectLike {
@@ -97,6 +101,7 @@ export interface ProjectLike {
   tags: string[];
   categories: JobCategory[];
   sortOrder?: number;
+  status?: 'DRAFT' | 'APPROVED';
 }
 
 export interface EducationLike {
@@ -109,6 +114,7 @@ export interface EducationLike {
   endDate?: Date | null;
   inProgress: boolean;
   highlights: string[];
+  status?: 'DRAFT' | 'APPROVED';
 }
 
 export interface SkillLike {
@@ -118,6 +124,7 @@ export interface SkillLike {
   level?: string | null;
   years?: number | null;
   categories: JobCategory[];
+  status?: 'DRAFT' | 'APPROVED';
 }
 
 export interface CertificationLike {
@@ -127,6 +134,7 @@ export interface CertificationLike {
   issuedAt?: Date | null;
   expiresAt?: Date | null;
   categories: JobCategory[];
+  status?: 'DRAFT' | 'APPROVED';
 }
 
 export interface WorkAuthLike {
@@ -141,6 +149,8 @@ export interface WorkAuthLike {
   visaExpiry?: Date | null;
   vacationPeriods: unknown; // [{start,end,label}]
   knownRestrictions: string[];
+  seekingSponsoredRoleAfterCourse?: boolean;
+  sponsoredRoleMinSalary?: number | null;
 }
 
 export interface CandidateLike {
@@ -205,4 +215,18 @@ export interface CandidateAvailability {
 export interface LinkItem {
   label: string;
   url: string;
+}
+
+/** Only APPROVED records may be used for CVs, answers or matching. Imported drafts wait for review. */
+export function approvedOnly<C extends CandidateLike>(c: C): C {
+  const ok = (x: { status?: string }) => (x.status ?? 'APPROVED') === 'APPROVED';
+  return {
+    ...c,
+    education: c.education.filter(ok),
+    employment: c.employment.filter(ok),
+    projects: c.projects.filter(ok),
+    skills: c.skills.filter(ok),
+    certifications: c.certifications.filter(ok),
+    evidence: c.evidence.filter(ok),
+  };
 }

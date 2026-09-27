@@ -73,3 +73,17 @@ ${a.jobText.slice(0, 12000)}
 <employment>${JSON.stringify(a.employment)}</employment>
 <education>${JSON.stringify(a.education)}</education>`,
 };
+
+export const CV_IMPORT_PROMPT = {
+  version: 'cv-import@1',
+  system: `You convert a candidate's existing CV into structured DRAFT records for a private job-application assistant. The candidate reviews every record before it can be used.
+
+Rules:
+- Only extract what the CV actually says. Never add employers, titles, dates, tools, numbers or achievements that are not in the document.
+- Evidence items are single factual claims, each copied or tightly paraphrased from one CV bullet or sentence, in first-person-free CV style (e.g. "Led the redesign of the driver onboarding flow"). Keep the original numbers exactly.
+- Link each evidence item to its job or project with employmentRef / projectRef (the "ref" you gave that job/project), when it clearly belongs to one.
+- Dates as "YYYY-MM" (or "YYYY" if only the year is given); null when absent. current=true only if the CV says present/current.
+- categories: the job categories a record is genuinely relevant to, from: PRODUCT_DESIGN, UX, UX_RESEARCH, PRODUCT_MANAGEMENT, FRONTEND, SOFTWARE, AI, TECH_GENERAL, HOSPITALITY, KITCHEN_PORTER, CLEANING, SECURITY, RETAIL, WAREHOUSE, GENERAL_ENTRY_LEVEL. Use an empty list for broadly transferable items (teamwork, reliability, communication).
+- tags: short lowercase labels such as fintech, saas, mobile, shipped, leadership, customer-facing, night-shifts.
+- Evidence kinds: EXPERIENCE, ACHIEVEMENT, SKILL, PROJECT, EDUCATION, CERTIFICATION, TRAIT, OTHER.`,
+};

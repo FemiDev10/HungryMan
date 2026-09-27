@@ -1,4 +1,4 @@
-import type { Track } from '@prisma/client';
+import type { Track, WorkContext } from '@prisma/client';
 import { hasPhrase, normalize } from './text.js';
 import type { CandidateAvailability, CandidateLike, CandidatePreferences, LinkItem } from './types.js';
 
@@ -24,8 +24,17 @@ export interface PreparedAnswer {
   patterns: string[];
 }
 
+/**
+ * Answers that depend on how the candidate would be working in this job. They are owned
+ * by the work context and can never be overridden by the library — otherwise a single
+ * "No" to "need sponsorship?" would be sent to full-time roles that do need it.
+ */
+export const CONTEXT_OWNED_KEYS = new Set(['right_to_work_uk', 'requires_sponsorship', 'visa_type', 'term_time_hours', 'earliest_start']);
+
+const fmtDate = (d: Date | string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+
 /** Questions every application form tends to ask; answered straight from candidate data. */
-export function deriveStandardAnswers(c: CandidateLike, track: Track): PreparedAnswer[] {
+export function deriveStandardAnswers(c: CandidateLike, track: Track, context: WorkContext = 'STANDARD'): PreparedAnswer[] {
   const auth = c.workAuthorisation;
   const avail = (c.availability ?? {}) as CandidateAvailability;
   const prefs = (c.preferences ?? {}) as CandidatePreferences;
@@ -39,27 +48,14 @@ export function deriveStandardAnswers(c: CandidateLike, track: Track): PreparedA
     { key: 'phone', question: 'Phone number', answer: c.phone ?? UNKNOWN, patterns: ['phone', 'mobile', 'telephone'] },
     { key: 'location', question: 'Current location', answer: [c.city, c.country].filter(Boolean).join(', ') || UNKNOWN, patterns: ['location', 'where are you based', 'city'] },
     { key: 'postcode', question: 'Postcode', answer: c.postcode ?? UNKNOWN, patterns: ['postcode', 'post code', 'zip'] },
-    {
-      key: 'right_to_work_uk',
-      question: 'Do you have the right to work in the UK?',
-      answer: auth ? (auth.hasRightToWork ? 'Yes' : 'No') : UNKNOWN,
-      patterns: ['right to work', 'eligible to work in the uk', 'legally entitled to work', 'authorised to work', 'authorized to work'],
-    },
-    {
-      key: 'requires_sponsorship',
-      question: 'Will you now or in the future require visa sponsorship?',
-      answer: auth ? (auth.sponsorshipRequired ? 'Yes' : 'No') : UNKNOWN,
-      patterns: ['sponsorship', 'require a visa', 'need a visa'],
-    },
-    { key: 'visa_type', question: 'What is your immigration / visa status?', answer: auth?.visaType ?? UNKNOWN, patterns: ['visa status', 'immigration status', 'visa type'] },
-    {
-      key: 'term_time_hours',
-      question: 'Are there any restrictions on the hours you can work?',
-      answer: auth ? (auth.termTimeHoursLimit != null ? `During university term time I can work up to ${auth.termTimeHoursLimit} hours per week${auth.vacationWorkAllowed ? '; full-time during official vacations' : ''}.` : 'No') : UNKNOWN,
-      patterns: ['restrictions on the hours', 'hours restriction', 'how many hours can you work', 'working hours restrictions'],
-    },
+    ...workAuthAnswers(c, context),
     { key: 'notice_period', question: 'What is your notice period?', answer: avail.noticePeriod ?? UNKNOWN, patterns: ['notice period', 'notice'] },
-    { key: 'earliest_start', question: 'When can you start?', answer: avail.startDate ?? UNKNOWN, patterns: ['start date', 'when can you start', 'earliest start', 'available to start'] },
+    {
+      key: 'earliest_start',
+      question: 'When can you start?',
+      answer: context === 'SPONSORED_AFTER_COURSE' ? (auth?.courseEnd ? `From ${fmtDate(auth.courseEnd)}, after my course ends` : UNKNOWN) : avail.startDate ?? UNKNOWN,
+      patterns: ['start date', 'when can you start', 'earliest start', 'available to start'],
+    },
     { key: 'availability_days', question: 'Which days are you available?', answer: avail.daysAvailable?.length ? avail.daysAvailable.join(', ') : UNKNOWN, patterns: ['days available', 'availability', 'which days'] },
     { key: 'shift_availability', question: 'Which shifts can you work?', answer: avail.shiftsAvailable?.length ? avail.shiftsAvailable.join(', ') : UNKNOWN, patterns: ['shifts', 'evenings', 'weekends', 'nights'] },
     {
@@ -79,7 +75,7 @@ export function deriveStandardAnswers(c: CandidateLike, track: Track): PreparedA
     },
   ].map((a) => ({ ...a, evidenceIds: [], source: a.answer === UNKNOWN ? ('UNKNOWN' as const) : ('CANDIDATE_DATA' as const) }));
 
-  if (track === 'PROFESSIONAL') {
+  if (track === 'PROFESSIONAL' || context === 'SPONSORED_AFTER_COURSE') {
     const drop = new Set(['availability_days', 'shift_availability', 'postcode']);
     return out.filter((a) => !drop.has(a.key));
   }
@@ -90,10 +86,11 @@ export function deriveStandardAnswers(c: CandidateLike, track: Track): PreparedA
  * Merge candidate-data answers with the verified library. A *verified* library answer
  * overrides derived data; unverified library answers are only used where data is unknown.
  */
-export function prepareAnswers(c: CandidateLike, track: Track, library: AnswerTemplateLike[]): PreparedAnswer[] {
-  const byKey = new Map(deriveStandardAnswers(c, track).map((a) => [a.key, a]));
+export function prepareAnswers(c: CandidateLike, track: Track, library: AnswerTemplateLike[], context: WorkContext = 'STANDARD'): PreparedAnswer[] {
+  const byKey = new Map(deriveStandardAnswers(c, track, context).map((a) => [a.key, a]));
   for (const t of library) {
     if (t.track && t.track !== track) continue;
+    if (CONTEXT_OWNED_KEYS.has(t.key)) continue;
     const existing = byKey.get(t.key);
     const libAnswer: PreparedAnswer = {
       key: t.key,
@@ -121,4 +118,42 @@ export function findAnswer(question: string, answers: PreparedAnswer[]): Prepare
     }
   }
   return best?.a ?? null;
+}
+
+type RawAnswer = Omit<PreparedAnswer, 'evidenceIds' | 'source'>;
+
+function workAuthAnswers(c: CandidateLike, context: WorkContext): RawAnswer[] {
+  const auth = c.workAuthorisation;
+  const q = {
+    rtw: { key: 'right_to_work_uk', question: 'Do you have the right to work in the UK?', patterns: ['right to work', 'eligible to work in the uk', 'legally entitled to work', 'authorised to work', 'authorized to work'] },
+    sponsor: { key: 'requires_sponsorship', question: 'Will you now or in the future require visa sponsorship?', patterns: ['sponsorship', 'require a visa', 'need a visa'] },
+    visa: { key: 'visa_type', question: 'What is your immigration / visa status?', patterns: ['visa status', 'immigration status', 'visa type'] },
+    hours: { key: 'term_time_hours', question: 'Are there any restrictions on the hours you can work?', patterns: ['restrictions on the hours', 'hours restriction', 'how many hours can you work', 'working hours restrictions'] },
+  };
+  if (!auth) return Object.values(q).map((x) => ({ ...x, answer: UNKNOWN }));
+
+  if (context === 'SPONSORED_AFTER_COURSE') {
+    const end = auth.courseEnd ? fmtDate(auth.courseEnd) : null;
+    return [
+      { ...q.rtw, answer: `Yes, I currently hold a UK ${auth.visaType} visa. For this role I would need Skilled Worker visa sponsorship${end ? `, starting after my course ends on ${end}` : ''}.` },
+      { ...q.sponsor, answer: 'Yes' },
+      { ...q.visa, answer: `${auth.visaType} visa; I would switch to a Skilled Worker visa with sponsorship for this role` },
+      { ...q.hours, answer: end ? `No restrictions once the role starts after my course ends on ${end} (Skilled Worker visa).` : UNKNOWN },
+    ];
+  }
+  if (context === 'STUDENT_PART_TIME') {
+    const limit = auth.termTimeHoursLimit;
+    return [
+      { ...q.rtw, answer: auth.hasRightToWork ? `Yes, ${auth.visaType} visa${limit != null ? ` (up to ${limit} hours per week during term time${auth.vacationWorkAllowed ? ', full-time during official vacations' : ''})` : ''}` : 'No' },
+      { ...q.sponsor, answer: auth.sponsorshipRequired ? 'Yes' : 'No' },
+      { ...q.visa, answer: auth.visaType },
+      { ...q.hours, answer: limit != null ? `During university term time I can work up to ${limit} hours per week${auth.vacationWorkAllowed ? '; full-time during official vacations' : ''}.` : 'No' },
+    ];
+  }
+  return [
+    { ...q.rtw, answer: auth.hasRightToWork ? 'Yes' : 'No' },
+    { ...q.sponsor, answer: auth.sponsorshipRequired ? 'Yes' : 'No' },
+    { ...q.visa, answer: auth.visaType },
+    { ...q.hours, answer: 'No' },
+  ];
 }

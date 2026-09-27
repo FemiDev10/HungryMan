@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { formatRef } from '../domain/stateMachine.js';
 
 export const rowInclude = {
-  job: { select: { id: true, title: true, company: true, location: true, source: true, url: true, category: true, matchScore: true, eligibility: true } },
+  job: { select: { id: true, title: true, company: true, location: true, source: true, url: true, category: true, matchScore: true, eligibility: true, estMonthlyPay: true, sponsorLicensed: true } },
   cvProfile: { select: { id: true, name: true, slug: true } },
   documents: { where: { kind: 'CV' as const }, orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, fileName: true } },
 } satisfies Prisma.ApplicationInclude;
@@ -15,6 +15,8 @@ export function toRow(a: RowApp) {
     ref: formatRef(a.seq),
     status: a.status,
     track: a.track,
+    workContext: a.workContext,
+    warmUp: a.warmUp,
     currentStep: a.currentStep,
     lastAction: a.lastAction,
     createdAt: a.createdAt,

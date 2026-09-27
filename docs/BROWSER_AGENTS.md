@@ -57,6 +57,17 @@ How results map to statuses:
 
 Every task includes a `rules` array (see `AGENT_RULES` in `browser/types.ts`). The agent must never bypass CAPTCHAs, bot detection, logins or rate limits, never invent answers, and only click submit when `autoSubmit` is true.
 
+## Recommended setup: Claude in Chrome, driven from Cowork, on your laptop
+
+Claude in Chrome acts in **your own Chrome**, so it uses the job sites you're already signed into. Running everything on the same laptop means it can reach HungryMan at `http://localhost:4000` with no hosting.
+
+1. In `apps/api/.env`, set `AGENT_API_TOKEN` to a long random value (`openssl rand -hex 32`). Restart the API.
+2. Install the Claude in Chrome extension and sign in to the job sites you use (Indeed, Reed, LinkedIn, Workday accounts, etc.).
+3. In Settings, set **Default browser agent** to `claude-chrome` (the default) and leave **Warm-up** at 3.
+4. Start a Cowork session with Chrome access and paste the prompt below (with `agent=claude-chrome`). The Overview checklist shows "Browser agent connected" once it has checked in.
+5. **Warm-up:** the first 3 applications are filled in and left open in Chrome. Check each one, press submit yourself, then click **"I submitted it"** on the Exceptions page. After that, the agent submits on its own.
+6. To keep it running without you, re-run the Cowork task on a schedule if your plan supports scheduled tasks, or start it whenever you open your laptop. The queue waits safely in between: tasks nobody has claimed just stay pending.
+
 ## Prompt for a Cowork / Claude in Chrome session
 
 Paste this into a Cowork task, replacing the URL and token placeholders. **Don't paste the real token into anything shared.**
@@ -64,10 +75,10 @@ Paste this into a Cowork task, replacing the URL and token placeholders. **Don't
 ```text
 You are the browser executor for my private job-application system, HungryMan.
 
-API: https://YOUR-HUNGRYMAN-HOST/api   Token: (use the AGENT_API_TOKEN I give you; send as "Authorization: Bearer <token>")
+API: http://localhost:4000/api   Token: (use the AGENT_API_TOKEN I give you; send as "Authorization: Bearer <token>")
 
 Loop:
-1. GET /agent-tasks/next?agent=cowork. If 204, stop and tell me the queue is empty.
+1. GET /agent-tasks/next?agent=claude-chrome (use agent=cowork if Settings says cowork). If 204, stop and tell me the queue is empty.
 2. Read the task JSON. Obey every item in task.rules exactly.
 3. Download task.cvFile.downloadPath (and task.coverLetterFile if present).
 4. Open task.url. Check the page is for task.job.company and task.job.title. If not, report EXCEPTION/SITE_ERROR.

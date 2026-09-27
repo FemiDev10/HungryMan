@@ -7,8 +7,9 @@ import { prisma } from '../db.js';
 import { validateCv } from '../domain/claimValidation.js';
 import { buildCvContent } from '../domain/cvBuilder.js';
 import { audit } from '../lib/audit.js';
-import { getCandidate, getSettings } from '../lib/candidate.js';
+import { getApprovedCandidate, getSettings } from '../lib/candidate.js';
 import { listSources } from '../sources/registry.js';
+import { importRegisterCsv, lookupSponsor, refreshRegisterFromGovUk, registerStatus } from '../sponsors/register.js';
 
 export const configRouter = Router();
 
@@ -56,7 +57,7 @@ configRouter.delete('/cv-profiles/:id', async (req, res) => {
 });
 configRouter.post('/cv-profiles/:id/preview', async (req, res) => {
   const { jobId } = z.object({ jobId: z.string().optional() }).parse(req.body ?? {});
-  const [profile, candidate] = await Promise.all([prisma.cvProfile.findUniqueOrThrow({ where: { id: req.params.id } }), getCandidate()]);
+  const [profile, candidate] = await Promise.all([prisma.cvProfile.findUniqueOrThrow({ where: { id: req.params.id } }), getApprovedCandidate()]);
   const job = jobId ? await prisma.job.findUniqueOrThrow({ where: { id: jobId } }) : null;
   const content = buildCvContent({ candidate, profile, job, category: job?.category ?? profile.categories[0] });
   res.json({ content, validation: validateCv(content, candidate) });
@@ -116,6 +117,8 @@ const SettingsSchema = z
       general: z.object({ keywords: z.array(z.string()), locations: z.array(z.string()) }).partial(),
     }).partial(),
     termTimeOverride: z.enum(['TERM', 'VACATION']).nullable(),
+    reviewFirstN: z.number().int().min(0).max(50),
+    monthlyIncomeGoal: z.number().min(0).max(100_000),
   })
   .partial();
 
@@ -183,10 +186,11 @@ configRouter.get('/meta', (_req, res) => {
     enums: {
       categories: CATEGORY.options,
       statuses: ['DISCOVERED', 'DEDUPLICATED', 'CLASSIFIED', 'ELIGIBILITY_CHECKED', 'MATCHED', 'QUEUED', 'CV_GENERATING', 'CV_VALIDATED', 'APPLICATION_PREPARING', 'READY_FOR_BROWSER', 'BROWSER_EXECUTING', 'SUBMISSION_ATTEMPTED', 'SUBMITTED', 'SKIPPED', 'REJECTED_BY_RULE', 'NEEDS_HUMAN', 'BLOCKED', 'FAILED', 'EXPIRED', 'DUPLICATE'],
-      exceptionTypes: ['CAPTCHA', 'VIDEO_QUESTION', 'LIVE_INTERVIEW', 'UNSUPPORTED_FIELD', 'MISSING_CANDIDATE_DATA', 'IDENTITY_VERIFICATION', 'APPLICATION_REQUIRES_SIGNATURE', 'AUTOMATION_BLOCKED', 'UNEXPECTED_QUESTION', 'PAYMENT_REQUIRED', 'DUPLICATE_APPLICATION', 'SITE_ERROR', 'LOGIN_REQUIRED', 'CV_VALIDATION_FAILED'],
+      exceptionTypes: ['REVIEW_BEFORE_SUBMIT', 'CAPTCHA', 'VIDEO_QUESTION', 'LIVE_INTERVIEW', 'UNSUPPORTED_FIELD', 'MISSING_CANDIDATE_DATA', 'IDENTITY_VERIFICATION', 'APPLICATION_REQUIRES_SIGNATURE', 'AUTOMATION_BLOCKED', 'UNEXPECTED_QUESTION', 'PAYMENT_REQUIRED', 'DUPLICATE_APPLICATION', 'SITE_ERROR', 'LOGIN_REQUIRED', 'CV_VALIDATION_FAILED'],
       outcomes: ['NONE', 'REJECTED', 'ASSESSMENT', 'INTERVIEW', 'OFFER', 'WITHDRAWN'],
       evidenceKinds: ['SKILL', 'EXPERIENCE', 'ACHIEVEMENT', 'EDUCATION', 'PROJECT', 'CERTIFICATION', 'TRAIT', 'AVAILABILITY', 'OTHER'],
       tracks: ['PROFESSIONAL', 'GENERAL'],
+      workContexts: ['STANDARD', 'STUDENT_PART_TIME', 'SPONSORED_AFTER_COURSE'],
     },
     integrations: {
       claude: integrations.claude(),
@@ -196,4 +200,27 @@ configRouter.get('/meta', (_req, res) => {
       browserAgentDetails: listBrowserAgents().map((a) => ({ id: a.id, label: a.label, mode: a.mode, simulated: a.simulated })),
     },
   });
+});
+
+// ─────────────────────────────── Sponsor register ────────────────────────
+
+configRouter.get('/sponsors/status', async (_req, res) => {
+  res.json(await registerStatus());
+});
+configRouter.post('/sponsors/refresh', async (_req, res) => {
+  try {
+    const rows = await refreshRegisterFromGovUk();
+    res.json({ ok: true, rows, status: await registerStatus() });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+configRouter.post('/sponsors/upload', async (req, res) => {
+  const { csvBase64 } = z.object({ csvBase64: z.string().min(10) }).parse(req.body);
+  const rows = await importRegisterCsv(Buffer.from(csvBase64, 'base64').toString('utf8'), 'manual upload');
+  res.json({ ok: true, rows, status: await registerStatus() });
+});
+configRouter.get('/sponsors/check', async (req, res) => {
+  const { company } = z.object({ company: z.string().min(1) }).parse(req.query);
+  res.json({ company, result: await lookupSponsor(company) });
 });

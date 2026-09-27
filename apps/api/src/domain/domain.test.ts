@@ -67,14 +67,18 @@ describe('eligibility (configurable work authorisation)', () => {
   it('computes term vs vacation from configured periods', () => {
     expect(studyPeriodAt(auth, TERM_DATE)).toBe('TERM');
     expect(studyPeriodAt(auth, VACATION_DATE)).toBe('VACATION');
-    expect(studyPeriodAt(auth, new Date('2027-03-01'))).toBe('VACATION'); // after course end
+    expect(studyPeriodAt(auth, new Date('2027-03-01'))).toBe('NOT_STUDYING'); // after course end
     expect(studyPeriodAt(auth, TERM_DATE, 'VACATION')).toBe('VACATION');
   });
 
   it('flags general-work jobs above the term-time hours limit as NOT_ELIGIBLE', () => {
     const job = fixtureJob({ title: 'Kitchen Porter', employmentType: 'FULL_TIME', hoursPerWeek: 40 });
     expect(assessEligibility(job, auth, 'GENERAL', { now: TERM_DATE }).status).toBe('NOT_ELIGIBLE');
-    expect(assessEligibility(job, auth, 'GENERAL', { now: VACATION_DATE }).status).toBe('ELIGIBLE');
+    // Vacation allows temporary full-time work, not a permanent full-time job
+    expect(assessEligibility(job, auth, 'GENERAL', { now: VACATION_DATE }).status).toBe('NOT_ELIGIBLE');
+    const temp = fixtureJob({ title: 'Christmas Kitchen Porter', employmentType: 'TEMPORARY', hoursPerWeek: 40 });
+    expect(assessEligibility(temp, auth, 'GENERAL', { now: VACATION_DATE }).status).toBe('ELIGIBLE');
+    expect(assessEligibility(temp, auth, 'GENERAL', { now: TERM_DATE }).status).toBe('NOT_ELIGIBLE');
   });
 
   it('accepts part-time within the limit and flags unknown hours', () => {
@@ -82,9 +86,47 @@ describe('eligibility (configurable work authorisation)', () => {
     expect(assessEligibility(fixtureJob({ employmentType: 'PART_TIME', hoursPerWeek: null }), auth, 'GENERAL', { now: TERM_DATE }).status).toBe('POTENTIALLY_ELIGIBLE');
   });
 
-  it('sends professional full-time roles in term time to review rather than rejecting', () => {
+  it('treats professional full-time roles as student work unless the sponsorship route is switched on', () => {
     const r = assessEligibility(fixtureJob(), auth, 'PROFESSIONAL', { now: TERM_DATE });
-    expect(r.status).toBe('REQUIRES_REVIEW');
+    expect(r.workContext).toBe('STUDENT_PART_TIME');
+    expect(r.status).toBe('NOT_ELIGIBLE'); // 37.5h > 20h
+  });
+
+  describe('Student → Skilled Worker route (full-time roles starting after the course)', () => {
+    const route = { ...auth, seekingSponsoredRoleAfterCourse: true, sponsoredRoleMinSalary: 30000 };
+    const at = { now: TERM_DATE };
+
+    it('applies when the employer is a licensed sponsor, and states the earliest start', () => {
+      const r = assessEligibility(fixtureJob({ sponsorLicensed: true, sponsorMatchName: 'Fintech Ltd' }), route, 'PROFESSIONAL', at);
+      expect(r.workContext).toBe('SPONSORED_AFTER_COURSE');
+      expect(r.status).toBe('POTENTIALLY_ELIGIBLE');
+      expect(r.earliestStart).toBe('2027-01-31');
+      expect(r.sponsorship.potentialOpportunity).toBe(true);
+    });
+    it('applies when the advert offers sponsorship even if the name is not on the register', () => {
+      expect(assessEligibility(fixtureJob({ sponsorLicensed: false, sponsorshipMention: 'OFFERED' }), route, 'PROFESSIONAL', at).status).toBe('POTENTIALLY_ELIGIBLE');
+    });
+    it('skips "no sponsorship" adverts even from licensed sponsors', () => {
+      expect(assessEligibility(fixtureJob({ sponsorLicensed: true, sponsorshipMention: 'NOT_OFFERED' }), route, 'PROFESSIONAL', at).status).toBe('NOT_ELIGIBLE');
+    });
+    it('skips silent adverts from employers not on the register', () => {
+      expect(assessEligibility(fixtureJob({ sponsorLicensed: false }), route, 'PROFESSIONAL', at).status).toBe('NOT_ELIGIBLE');
+    });
+    it('asks for review when the register has not been loaded', () => {
+      expect(assessEligibility(fixtureJob({ sponsorLicensed: null }), route, 'PROFESSIONAL', at).status).toBe('REQUIRES_REVIEW');
+    });
+    it('skips immediate-start roles and salaries under the configured floor', () => {
+      expect(assessEligibility(fixtureJob({ sponsorLicensed: true, description: 'Immediate start required. Figma.' }), route, 'PROFESSIONAL', at).status).toBe('NOT_ELIGIBLE');
+      expect(assessEligibility(fixtureJob({ sponsorLicensed: true, salaryMin: 24000, salaryMax: 26000 }), route, 'PROFESSIONAL', at).status).toBe('NOT_ELIGIBLE');
+    });
+    it('keeps part-time professional work (e.g. a 15h remote contract) under the student rules', () => {
+      const r = assessEligibility(fixtureJob({ employmentType: 'PART_TIME', hoursPerWeek: 15 }), route, 'PROFESSIONAL', at);
+      expect(r.workContext).toBe('STUDENT_PART_TIME');
+      expect(r.status).toBe('ELIGIBLE');
+    });
+    it('uses the standard rules once the course has ended', () => {
+      expect(assessEligibility(fixtureJob(), route, 'PROFESSIONAL', { now: new Date('2027-03-01') }).workContext).toBe('STANDARD');
+    });
   });
 
   it('handles sponsorship requirements without ever guaranteeing sponsorship', () => {
@@ -191,12 +233,56 @@ describe('answers', () => {
     const answers = prepareAnswers(c, 'GENERAL', [
       { key: 'why_us', category: 'MOTIVATION', question: 'Why do you want to work here?', patterns: ['why do you want'], answer: 'Because…', track: null, evidenceIds: [], verified: false },
       { key: 'driving', category: 'OTHER', question: 'Do you have a driving licence?', patterns: ['driving licence'], answer: 'No', track: null, evidenceIds: [], verified: true },
-    ]);
-    expect(findAnswer('Do you have the right to work in the UK?', answers)?.answer).toBe('Yes');
+    ], 'STUDENT_PART_TIME');
+    expect(findAnswer('Do you have the right to work in the UK?', answers)?.answer).toMatch(/^Yes, Student visa/);
     expect(findAnswer('Do you require sponsorship?', answers)?.answer).toBe('No');
     expect(findAnswer('Are there any restrictions on the hours you can work?', answers)?.answer).toMatch(/20 hours/);
     expect(findAnswer('Why do you want to work here?', answers)?.answer).toBe(UNKNOWN); // unverified
     expect(findAnswer('Do you hold a full driving licence?', answers)?.answer).toBe('No');
+  });
+
+  it('answers sponsorship and start date honestly for full-time roles after the course', () => {
+    const lib = [{ key: 'requires_sponsorship', category: 'WORK_AUTHORISATION', question: 'Sponsorship?', patterns: ['sponsorship'], answer: 'No', track: null, evidenceIds: [], verified: true }];
+    const full = prepareAnswers(c, 'PROFESSIONAL', lib, 'SPONSORED_AFTER_COURSE');
+    expect(findAnswer('Will you require visa sponsorship?', full)?.answer).toBe('Yes'); // library "No" cannot override
+    expect(findAnswer('When can you start?', full)?.answer).toMatch(/31 January 2027/);
+    expect(findAnswer('Do you have the right to work in the UK?', full)?.answer).toMatch(/Skilled Worker/);
+    const part = prepareAnswers(c, 'GENERAL', lib, 'STUDENT_PART_TIME');
+    expect(findAnswer('Will you require visa sponsorship?', part)?.answer).toBe('No');
+    expect(findAnswer('Do you have the right to work in the UK?', part)?.answer).toMatch(/20 hours per week/);
+  });
+});
+
+describe('review status', () => {
+  it('ignores draft records everywhere the agent looks', async () => {
+    const { approvedOnly } = await import('./types.js');
+    const c = fixtureCandidate();
+    c.evidence.push({ id: 'draft1', kind: 'ACHIEVEMENT', claim: 'Draft claim about Kubernetes', source: 'Imported', allowedForCV: true, allowedForApplication: true, categories: ['PRODUCT_DESIGN'], tags: ['fintech'], employmentId: 'emp1', projectId: null, status: 'DRAFT' });
+    const a = approvedOnly(c);
+    const cv = buildCvContent({ candidate: a, profile: fixtureProfile('designer'), job: fixtureJob(), category: 'PRODUCT_DESIGN' });
+    expect(JSON.stringify(cv)).not.toContain('Kubernetes');
+    // A plan citing the draft is rejected by the validator
+    expect(validateSentence('Draft claim about Kubernetes', ['evidence:draft1'], a, null, 'cv')).not.toEqual([]);
+  });
+});
+
+describe('sponsor register', () => {
+  it('parses the gov.uk CSV, keeps Skilled Worker rows and trading names', async () => {
+    const { registerRowsFromCsv, normalizeCompany } = await import('../sponsors/register.js');
+    const csv = '\uFEFF"Organisation Name","Town/City","County","Type & Rating","Route"\r\n"Monzo Bank Ltd","London",,"Worker (A rating)","Skilled Worker"\r\n"Acme Holdings t/a Acme Coffee","Newcastle upon Tyne","Tyne and Wear","Worker (A rating)","Skilled Worker"\r\n"Seasonal Farm Ltd","Kent",,"Temporary Worker (A rating)","Seasonal Worker"\r\n"Quote ""Test"" Ltd","Leeds",,"Worker (A rating)","Skilled Worker"';
+    const rows = registerRowsFromCsv(csv);
+    expect(rows.map((r) => r.normalizedName)).toEqual(['monzo bank', 'acme', 'acme coffee', 'quote test']);
+    expect(normalizeCompany('Monzo Bank Limited')).toBe('monzo bank');
+    expect(normalizeCompany('The Ramsay Group PLC')).toBe('ramsay');
+  });
+});
+
+describe('income estimate', () => {
+  it('caps hours at the term-time limit', async () => {
+    const { estimateMonthlyPay } = await import('./matching.js');
+    const job = fixtureJob({ salaryMin: 12.5, salaryMax: 12.5, salaryPeriod: 'HOUR', hoursPerWeek: 30, employmentType: 'PART_TIME' });
+    expect(estimateMonthlyPay(job, 20)).toBe(Math.round((12.5 * 20 * 52) / 12));
+    expect(estimateMonthlyPay(job, null)).toBe(Math.round((12.5 * 30 * 52) / 12));
   });
 });
 
@@ -210,5 +296,16 @@ describe('dedupe + state machine', () => {
     expect(canTransition('BROWSER_EXECUTING', 'BLOCKED')).toBe(true);
     expect(canTransition('SUBMITTED', 'QUEUED')).toBe(false);
     expect(canTransition('NEEDS_HUMAN', 'SUBMITTED')).toBe(true);
+  });
+});
+
+describe('licence requirements', () => {
+  const c = fixtureCandidate();
+  const run = (description: string) =>
+    computeMatch({ job: fixtureJob({ title: 'Steward', description, requirements: [] }), category: 'SECURITY', alternativeCategories: [], track: 'GENERAL', candidate: c, profile: fixtureProfile('kp'), eligibility: 'ELIGIBLE', minScore: 10 }).hardBlocks;
+  it('only blocks when a licence is actually required', () => {
+    expect(run('You must hold a valid SIA licence.')).toHaveLength(1);
+    expect(run('No SIA licence required. Training provided.')).toHaveLength(0);
+    expect(run("Don't have an SIA licence? We will fund your SIA licence training.")).toHaveLength(0);
   });
 });

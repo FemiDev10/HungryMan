@@ -147,7 +147,7 @@ export async function prepareApplication(applicationId: string, ctx: PipelineCon
   }
 
   const library = await prisma.answerTemplate.findMany();
-  const answers = prepareAnswers(ctx.candidate, app.track, library);
+  const answers = prepareAnswers(ctx.candidate, app.track, library, app.workContext ?? 'STANDARD');
   const version = (await prisma.answerSet.count({ where: { applicationId: app.id } })) + 1;
   const answerSet = await prisma.answerSet.create({ data: { applicationId: app.id, version, answers: json(answers) } });
   const unknown = answers.filter((a) => a.answer === 'UNKNOWN').map((a) => a.key);

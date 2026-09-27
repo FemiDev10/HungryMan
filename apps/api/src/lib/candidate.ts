@@ -1,4 +1,5 @@
 import { prisma } from '../db.js';
+import { approvedOnly } from '../domain/types.js';
 
 export const candidateInclude = {
   workAuthorisation: true,
@@ -18,6 +19,11 @@ export async function getCandidate() {
 }
 
 export type FullCandidate = Awaited<ReturnType<typeof getCandidate>>;
+
+/** The candidate as the agent sees it: imported drafts are invisible until approved. */
+export async function getApprovedCandidate(): Promise<FullCandidate> {
+  return approvedOnly(await getCandidate());
+}
 
 export async function getSettings() {
   return prisma.settings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });

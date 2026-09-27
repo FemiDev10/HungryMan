@@ -32,7 +32,7 @@ export async function seedDemoCandidate() {
           termTimeHoursLimit: 20,
           vacationWorkAllowed: true,
           sponsorshipRequired: false,
-          fullTimeRestrictions: 'Permanent full-time roles only from after course end date',
+          seekingSponsoredRoleAfterCourse: true,
           courseStart: new Date('2025-09-22'),
           courseEnd: new Date('2027-01-15'),
           vacationPeriods: [{ start: '2026-12-12', end: '2027-01-10', label: 'Winter break' }],
@@ -81,5 +81,7 @@ export const DEMO_JOBS = [
   { url: 'https://example.com/jobs/kitchen-porter', title: 'Kitchen Porter', company: 'Demo Bistro', location: 'London', description: 'Part-time, 16 hours per week, evenings and weekends. £12.50 per hour.\nWhat you will do:\n- Washing up pots and pans\n- Keeping the kitchen clean and hygienic\nNo experience necessary, training provided.' },
   { url: 'https://example.com/jobs/retail-captcha', title: 'Retail Assistant', company: 'Demo Stores', location: 'London', description: 'Part-time 12 hours per week on the tills and shop floor. Customer service focus. £12.21 per hour.' },
   { url: 'https://example.com/jobs/cleaner-fulltime', title: 'Cleaner', company: 'Demo Facilities', location: 'London', description: 'Full-time 40 hours per week office cleaning. £12.60 per hour.' },
+  { url: 'https://example.com/jobs/matchday-steward', title: 'Matchday Steward', company: 'Demo Stadium Events', location: 'Newcastle upon Tyne', description: 'Part-time matchday stewarding, around 12 hours per week on match days and evening events. £12.60 per hour. Crowd safety and customer service. Training provided, no SIA licence required.' },
+  { url: 'https://example.com/jobs/ux-startup', title: 'UX Designer', company: 'Unlisted Startup', location: 'London', description: 'Full-time permanent UX designer role. Figma, prototyping, user research. £40,000 per annum.' },
   { url: 'https://example.com/jobs/security', title: 'Security Officer', company: 'Demo Guarding', location: 'London', description: 'Must hold a valid SIA licence. 12 hours per week weekend patrols.' },
 ];

@@ -1,11 +1,12 @@
 import { createApp } from './app.js';
 import { assertProductionSecrets, env, integrations } from './config/env.js';
 import { prisma } from './db.js';
-import { startScheduler } from './pipeline/scheduler.js';
+import { refreshSponsorsIfStale, startScheduler } from './pipeline/scheduler.js';
 import { ensureDefaults } from './seed/defaults.js';
 
 assertProductionSecrets();
 await ensureDefaults();
+void refreshSponsorsIfStale(); // background; never blocks startup
 
 const app = createApp();
 app.listen(env.PORT, () => {

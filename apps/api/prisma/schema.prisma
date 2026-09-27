@@ -84,7 +84,20 @@ enum ApplicationStatus {
   DUPLICATE
 }
 
+enum ReviewStatus {
+  DRAFT
+  APPROVED
+}
+
+/// How the candidate would be working in a given job — decides eligibility rules and form answers.
+enum WorkContext {
+  STANDARD                // no study-related restrictions
+  STUDENT_PART_TIME       // during studies, within the term-time hours limit (or vacation work)
+  SPONSORED_AFTER_COURSE  // full-time role starting after the course ends, needing Skilled Worker sponsorship
+}
+
 enum ExceptionType {
+  REVIEW_BEFORE_SUBMIT
   CAPTCHA
   VIDEO_QUESTION
   LIVE_INTERVIEW
@@ -186,6 +199,8 @@ model WorkAuthorisation {
   visaExpiry            DateTime?
   vacationPeriods       Json      @default("[]") // [{start, end, label}] official university vacation dates
   knownRestrictions     String[]  @default([]) // e.g. "No self-employment", "No permanent full-time role before course end"
+  seekingSponsoredRoleAfterCourse Boolean @default(false) // apply for full-time roles starting after courseEnd under Skilled Worker sponsorship
+  sponsoredRoleMinSalary Float?   // annual salary floor for sponsored roles — the user enters it after checking gov.uk
   guidanceVerifiedAt    DateTime? // when the user last checked these rules against official UK guidance
   notes                 String?
   updatedAt             DateTime  @updatedAt
@@ -205,6 +220,7 @@ model Education {
   location     String?
   highlights   String[]  @default([])
   sortOrder    Int       @default(0)
+  status       ReviewStatus @default(APPROVED)
 }
 
 model Employment {
@@ -222,6 +238,7 @@ model Employment {
   tags         String[]  @default([]) // e.g. "fintech", "saas", "hospitality", "customer-facing"
   categories   JobCategory[] @default([]) // job categories this experience is genuinely relevant to
   sortOrder    Int       @default(0)
+  status       ReviewStatus @default(APPROVED)
   evidence     Evidence[]
 }
 
@@ -239,6 +256,7 @@ model Project {
   tags         String[]  @default([])
   categories   JobCategory[] @default([])
   sortOrder    Int       @default(0)
+  status       ReviewStatus @default(APPROVED)
   evidence     Evidence[]
 }
 
@@ -252,6 +270,7 @@ model Skill {
   years        Float?
   categories   JobCategory[] @default([])
   evidenceId   String?   // optional supporting evidence
+  status       ReviewStatus @default(APPROVED)
 
   @@unique([candidateId, name])
 }
@@ -267,6 +286,7 @@ model Certification {
   credentialId String?
   url          String?
   categories   JobCategory[] @default([])
+  status       ReviewStatus @default(APPROVED)
 }
 
 /// Atomic, traceable factual claim. Every CV bullet / answer must cite evidence.
@@ -286,6 +306,7 @@ model Evidence {
   employment            Employment?  @relation(fields: [employmentId], references: [id], onDelete: SetNull)
   projectId             String?
   project               Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  status                ReviewStatus @default(APPROVED) // imported items start as DRAFT; only APPROVED is ever used
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 }
@@ -358,6 +379,9 @@ model Job {
   match                 Json?          // MatchResult
   matchScore            Float?
   analysisVersion       String?
+  sponsorLicensed       Boolean?       // employer found on the register of licensed sponsors (null = register not loaded)
+  sponsorMatchName      String?        // the register entry it matched, for transparency
+  estMonthlyPay         Float?         // general-work: hourly pay × hours (capped at the term-time limit) × 52 / 12
 
   application           Application?
 
@@ -374,6 +398,8 @@ model Application {
   jobId                   String            @unique
   job                     Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
   track                   Track?
+  workContext             WorkContext?
+  warmUp                  Boolean           @default(false) // one of the first N applications, held for review before submit
   cvProfileId             String?
   cvProfile               CvProfile?        @relation(fields: [cvProfileId], references: [id])
   cvVersionId             String?
@@ -484,12 +510,14 @@ model Settings {
   minMatchProfessional      Float      @default(55)
   minMatchGeneral           Float      @default(45)
   autoSubmit                Boolean    @default(true)
-  defaultBrowserAgent       String     @default("cowork")
+  defaultBrowserAgent       String     @default("claude-chrome")
   schedule                  Json       @default("[]") // [{time:"08:00", action:"DISCOVER"}]
   timezone                  String     @default("Europe/London")
   searchCriteria            Json       @default("{}") // {professional:{keywords[],locations[],remote}, general:{...}}
   termTimeOverride          String?    // null | TERM | VACATION
   notifyChannels            Json       @default("{\"inApp\":true}")
+  reviewFirstN              Int        @default(3)    // warm-up: first N real applications stop before submit
+  monthlyIncomeGoal         Float      @default(1000)
   updatedAt                 DateTime   @updatedAt
 }
 
@@ -550,4 +578,25 @@ model Notification {
   createdAt     DateTime @default(now())
 
   @@index([read, createdAt])
+}
+
+/// Home Office register of licensed sponsors (workers). Imported from the gov.uk CSV.
+model SponsorRegister {
+  id               String  @id @default(cuid())
+  organisationName String
+  normalizedName   String
+  townCity         String?
+  county           String?
+  typeRating       String?
+  route            String?
+
+  @@index([normalizedName])
+}
+
+model SponsorRegisterMeta {
+  id          Int      @id @default(1)
+  rows        Int      @default(0)
+  sourceUrl   String?
+  importedAt  DateTime?
+  lastError   String?
 }

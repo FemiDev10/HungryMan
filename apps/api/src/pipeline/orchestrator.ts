@@ -2,7 +2,7 @@ import type { Prisma, Track } from '@prisma/client';
 import { getAiEngine } from '../ai/engine.js';
 import { prisma } from '../db.js';
 import { audit } from '../lib/audit.js';
-import { getCandidate, getSettings } from '../lib/candidate.js';
+import { getApprovedCandidate, getCandidate, getSettings } from '../lib/candidate.js';
 import { notify } from '../lib/notify.js';
 import { startOfDay } from '../lib/time.js';
 import { getSource, listSources } from '../sources/registry.js';
@@ -28,7 +28,7 @@ async function shouldStop(manual: boolean) {
 }
 
 export async function buildContext(actor = 'system'): Promise<PipelineContext> {
-  const [candidate, profiles, settings] = await Promise.all([getCandidate(), prisma.cvProfile.findMany({ where: { active: true } }), getSettings()]);
+  const [candidate, profiles, settings] = await Promise.all([getApprovedCandidate(), prisma.cvProfile.findMany({ where: { active: true } }), getSettings()]);
   return { candidate, profiles, settings, ai: getAiEngine(), actor };
 }
 
@@ -195,7 +195,7 @@ export async function runExecution(opts: { manual?: boolean } = {}) {
     }
     await setStatus({ currentTask: 'Applying', currentApplicationId: a.id, currentSource: a.job.source, currentStep: `Opening application — ${a.job.title} at ${a.job.company}`, queuePosition: i + 1, queueTotal: ready.length, stepStartedAt: new Date() });
     try {
-      await executeApplication(a.id, { candidate, agentId: s.defaultBrowserAgent, autoSubmit: s.autoSubmit });
+      await executeApplication(a.id, { candidate, agentId: s.defaultBrowserAgent, autoSubmit: s.autoSubmit, reviewFirstN: s.reviewFirstN });
       dispatched++;
       left[track]--;
       left.total--;

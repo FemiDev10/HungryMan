@@ -13,10 +13,14 @@ import { storage } from '../storage/storage.js';
  */
 export const agentTasksRouter = Router();
 
+/** When each browser agent last asked for work — shown on the setup checklist. */
+export const lastAgentPoll = new Map<string, Date>();
+
 const AgentQuery = z.object({ agent: z.enum(['cowork', 'claude-chrome']) });
 
 agentTasksRouter.get('/agent-tasks/next', async (req, res) => {
   const { agent } = AgentQuery.parse(req.query);
+  lastAgentPoll.set(agent, new Date());
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
   if (settings?.agentState === 'STOPPED') return res.status(204).end();
 

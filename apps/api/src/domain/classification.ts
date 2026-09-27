@@ -68,13 +68,13 @@ const RULES: Rule[] = [
   },
   {
     category: 'SECURITY',
-    titlePhrases: ['security officer', 'security guard', 'door supervisor', 'steward', 'patrol officer', 'cctv operator', 'concierge security'],
-    bodyPhrases: ['sia licence', 'sia license', 'patrols', 'cctv', 'access control', 'security'],
+    titlePhrases: ['security officer', 'security guard', 'door supervisor', 'steward', 'stewards', 'matchday steward', 'event steward', 'stadium steward', 'crowd safety', 'spectator safety', 'event security', 'patrol officer', 'cctv operator', 'concierge security'],
+    bodyPhrases: ['sia licence', 'sia license', 'patrols', 'cctv', 'access control', 'security', 'matchday', 'match day', 'stadium', 'spectator safety', 'crowd', 'events'],
   },
   {
     category: 'HOSPITALITY',
-    titlePhrases: ['waiter', 'waitress', 'waiting staff', 'bartender', 'bar staff', 'barista', 'front of house', 'host', 'hotel receptionist', 'team member', 'food and beverage', 'catering assistant', 'server'],
-    bodyPhrases: ['guests', 'customer service', 'restaurant', 'hotel', 'bar', 'coffee', 'food safety', 'hospitality'],
+    titlePhrases: ['crew member', 'restaurant crew', 'fast food', 'kitchen crew', 'restaurant team member', 'waiter', 'waitress', 'waiting staff', 'bartender', 'bar staff', 'barista', 'front of house', 'host', 'hotel receptionist', 'team member', 'food and beverage', 'catering assistant', 'server'],
+    bodyPhrases: ['guests', 'customer service', 'restaurant', 'drive thru', 'drive-thru', 'burgers', 'fast food', 'hotel', 'bar', 'coffee', 'food safety', 'hospitality'],
   },
   {
     category: 'RETAIL',
@@ -88,7 +88,7 @@ const RULES: Rule[] = [
   },
   {
     category: 'GENERAL_ENTRY_LEVEL',
-    titlePhrases: ['general assistant', 'general operative', 'labourer', 'crew member', 'entry level', 'assistant', 'operative', 'temp'],
+    titlePhrases: ['general assistant', 'general operative', 'labourer', 'entry level', 'assistant', 'operative', 'temp'],
     bodyPhrases: ['no experience required', 'no experience necessary', 'training provided', 'flexible hours', 'entry level'],
   },
 ];

@@ -1,4 +1,5 @@
-import type { Eligibility, Track } from '@prisma/client';
+import type { Eligibility, Track, WorkContext } from '@prisma/client';
+import { annualise } from './matching.js';
 import type { JobLike, WorkAuthLike } from './types.js';
 
 export type StudyPeriod = 'TERM' | 'VACATION' | 'NOT_STUDYING';
@@ -7,8 +8,10 @@ export interface EligibilityDetails {
   status: Eligibility;
   reasons: string[];
   period: StudyPeriod;
+  workContext: WorkContext;
   assumedHoursPerWeek: number | null;
-  sponsorship: { mention: string; evidence: string | null; note: string; potentialOpportunity: boolean };
+  earliestStart: string | null; // ISO date when the job can start, if constrained
+  sponsorship: { mention: string; evidence: string | null; note: string; potentialOpportunity: boolean; licensedSponsor: boolean | null; registerName: string | null };
 }
 
 const RANK: Record<Eligibility, number> = {
@@ -29,11 +32,18 @@ interface Period {
   label?: string;
 }
 
+const IMMEDIATE_START = /\b(immediate start|start immediately|available immediately|must be able to start (immediately|asap|now))\b/i;
+
+export function isStudent(auth: WorkAuthLike, at: Date): boolean {
+  if (auth.termTimeHoursLimit == null) return false;
+  return !auth.courseEnd || at <= new Date(auth.courseEnd);
+}
+
 export function studyPeriodAt(auth: WorkAuthLike, at: Date, override?: string | null): StudyPeriod {
   if (override === 'TERM') return 'TERM';
   if (override === 'VACATION') return 'VACATION';
   if (auth.termTimeHoursLimit == null) return 'NOT_STUDYING';
-  if (auth.courseEnd && at > new Date(auth.courseEnd)) return 'VACATION';
+  if (auth.courseEnd && at > new Date(auth.courseEnd)) return 'NOT_STUDYING';
   if (auth.courseStart && at < new Date(auth.courseStart)) return 'VACATION';
   const periods = Array.isArray(auth.vacationPeriods) ? (auth.vacationPeriods as Period[]) : [];
   for (const p of periods) {
@@ -48,10 +58,25 @@ export function studyPeriodAt(auth: WorkAuthLike, at: Date, override?: string | 
 }
 
 /**
+ * Which set of rules applies to this job for this candidate.
+ *  - A student looking at a full-time professional role (and who has opted into the
+ *    Student → Skilled Worker route) is applying for a job that starts after the course.
+ *  - Any other job during studies is student work, capped by the term-time hours limit.
+ */
+export function workContextFor(job: JobLike, auth: WorkAuthLike | null | undefined, track: Track | null, now: Date): WorkContext {
+  if (!auth || !isStudent(auth, now)) return 'STANDARD';
+  const hours = job.hoursPerWeek ?? (job.employmentType === 'FULL_TIME' ? 37.5 : null);
+  const fullTime = job.employmentType === 'FULL_TIME' || (hours != null && auth.termTimeHoursLimit != null && hours > auth.termTimeHoursLimit);
+  const sponsorable = !['INTERNSHIP', 'TEMPORARY', 'ZERO_HOURS', 'PART_TIME'].includes(job.employmentType);
+  if (track === 'PROFESSIONAL' && fullTime && sponsorable && auth.seekingSponsoredRoleAfterCourse) return 'SPONSORED_AFTER_COURSE';
+  return 'STUDENT_PART_TIME';
+}
+
+/**
  * Work-authorisation check. Rules are driven entirely by the user's configured
- * WorkAuthorisation record — nothing about UK immigration law is hard-coded here
- * beyond "respect the configured limits". The user must verify their configuration
- * against official gov.uk guidance.
+ * WorkAuthorisation record; nothing about UK immigration law is hard-coded beyond
+ * "respect the configured limits". The user must verify their configuration against
+ * official gov.uk guidance.
  */
 export function assessEligibility(
   job: JobLike,
@@ -62,75 +87,60 @@ export function assessEligibility(
   const now = opts.now ?? new Date();
   const reasons: string[] = [];
   const mention = job.sponsorshipMention ?? 'NONE';
-  const sponsorship = {
+  const sponsorship: EligibilityDetails['sponsorship'] = {
     mention,
     evidence: job.sponsorshipEvidence ?? null,
     note:
       mention === 'OFFERED'
-        ? 'The advert mentions sponsorship. This is not a guarantee — confirm with the employer and check the official register of licensed sponsors.'
+        ? 'The advert mentions sponsorship. This is not a guarantee — confirm with the employer.'
         : mention === 'NOT_OFFERED'
           ? 'The advert states that sponsorship is not offered.'
           : 'No reliable sponsorship information in the advert.',
     potentialOpportunity: false,
+    licensedSponsor: job.sponsorLicensed ?? null,
+    registerName: job.sponsorMatchName ?? null,
   };
+  const assumedHours = job.hoursPerWeek ?? (job.employmentType === 'FULL_TIME' ? 37.5 : null);
+  const base = { assumedHoursPerWeek: assumedHours, sponsorship, earliestStart: null as string | null };
 
   if (!auth) {
-    return {
-      status: 'UNKNOWN',
-      reasons: ['Work authorisation has not been configured in the candidate profile.'],
-      period: 'NOT_STUDYING',
-      assumedHoursPerWeek: job.hoursPerWeek ?? null,
-      sponsorship,
-    };
+    return { ...base, status: 'UNKNOWN', reasons: ['Work authorisation has not been configured in the candidate profile.'], period: 'NOT_STUDYING', workContext: 'STANDARD' };
   }
 
-  let status: Eligibility = 'ELIGIBLE';
   const period = studyPeriodAt(auth, now, opts.periodOverride);
-  const isFullTime = job.employmentType === 'FULL_TIME';
-  const assumedHours = job.hoursPerWeek ?? (isFullTime ? 37.5 : null);
-  const isPermanent = isFullTime && !['TEMPORARY', 'CONTRACT', 'INTERNSHIP'].includes(job.employmentType);
+  const context = workContextFor(job, auth, track, now);
 
   if (auth.visaExpiry && new Date(auth.visaExpiry) < now) {
-    return {
-      status: 'REQUIRES_REVIEW',
-      reasons: ['Configured visa expiry date is in the past — update work authorisation.'],
-      period,
-      assumedHoursPerWeek: assumedHours,
-      sponsorship,
-    };
+    return { ...base, status: 'REQUIRES_REVIEW', reasons: ['Configured visa expiry date is in the past — update work authorisation.'], period, workContext: context };
   }
 
-  // Sponsorship
-  if (!auth.hasRightToWork || auth.sponsorshipRequired) {
+  if (context === 'SPONSORED_AFTER_COURSE') return sponsoredAfterCourse(job, auth, base, period);
+
+  let status: Eligibility = 'ELIGIBLE';
+  const isFullTime = job.employmentType === 'FULL_TIME';
+  const isPermanent = isFullTime;
+
+  // Sponsorship needed for the job itself (not the student route)
+  if (context === 'STANDARD' && (!auth.hasRightToWork || auth.sponsorshipRequired)) {
     if (mention === 'NOT_OFFERED') {
       status = worst(status, 'NOT_ELIGIBLE');
       reasons.push('Candidate requires sponsorship and the advert says sponsorship is not offered.');
-    } else if (mention === 'OFFERED') {
+    } else if (mention === 'OFFERED' || job.sponsorLicensed) {
       status = worst(status, 'POTENTIALLY_ELIGIBLE');
       sponsorship.potentialOpportunity = true;
-      reasons.push('Candidate requires sponsorship; the advert mentions sponsorship (not guaranteed).');
+      reasons.push(mention === 'OFFERED' ? 'Advert mentions sponsorship (not guaranteed).' : `Employer appears on the licensed sponsor register (${job.sponsorMatchName}).`);
     } else {
       status = worst(status, 'REQUIRES_REVIEW');
       reasons.push('Candidate requires sponsorship and the advert does not say whether it is available.');
     }
-  } else if (track === 'PROFESSIONAL' && isPermanent && mention === 'OFFERED') {
-    // Useful for a student who will later need sponsorship for a graduate-level role.
-    sponsorship.potentialOpportunity = true;
   }
 
-  // Hours restrictions (e.g. student visa term-time limit)
-  if (auth.termTimeHoursLimit != null && period === 'TERM') {
+  // Student work: term-time hours limit
+  if (context === 'STUDENT_PART_TIME' && auth.termTimeHoursLimit != null && period === 'TERM') {
     const limit = auth.termTimeHoursLimit;
     if (assumedHours != null && assumedHours > limit) {
-      if (track === 'PROFESSIONAL' && isFullTime) {
-        status = worst(status, 'REQUIRES_REVIEW');
-        reasons.push(
-          `Full-time role (~${assumedHours}h/week) exceeds the configured term-time limit of ${limit}h/week. Only viable if the start date falls after the course end or in vacation — review.`,
-        );
-      } else {
-        status = worst(status, 'NOT_ELIGIBLE');
-        reasons.push(`Role requires ~${assumedHours}h/week, above the configured term-time limit of ${limit}h/week.`);
-      }
+      status = worst(status, 'NOT_ELIGIBLE');
+      reasons.push(`Role requires ~${assumedHours}h/week, above the configured term-time limit of ${limit}h/week.`);
     } else if (assumedHours == null) {
       status = worst(status, 'POTENTIALLY_ELIGIBLE');
       reasons.push(`Hours not stated — must not exceed ${limit}h/week during term time.`);
@@ -139,31 +149,90 @@ export function assessEligibility(
     }
   }
 
-  if (period === 'VACATION' && auth.termTimeHoursLimit != null) {
+  if (context === 'STUDENT_PART_TIME' && period === 'VACATION') {
     if (!auth.vacationWorkAllowed) {
-      status = worst(status, 'REQUIRES_REVIEW');
+      status = worst(status, 'NOT_ELIGIBLE');
       reasons.push('Vacation work is not permitted by the configured work authorisation.');
+    } else if (isPermanent) {
+      status = worst(status, 'NOT_ELIGIBLE');
+      reasons.push('Permanent full-time role during studies; vacation work only covers temporary full-time work.');
     } else {
-      reasons.push('Currently in a configured vacation period — full-time temporary work may be permitted.');
+      reasons.push('Currently in a configured vacation period — temporary full-time work may be permitted.');
     }
   }
 
-  if (isPermanent && auth.fullTimeRestrictions) {
+  if (context === 'STANDARD' && isPermanent && auth.fullTimeRestrictions) {
     status = worst(status, 'REQUIRES_REVIEW');
     reasons.push(`Permanent full-time role — configured restriction: ${auth.fullTimeRestrictions}`);
   }
 
-  if (auth.knownRestrictions.length) {
-    const text = `${job.title}\n${job.description}`.toLowerCase();
-    for (const r of auth.knownRestrictions) {
-      const rl = r.toLowerCase();
-      if (rl.includes('self-employ') && /self[- ]employ|freelance|umbrella/.test(text)) {
-        status = worst(status, 'NOT_ELIGIBLE');
-        reasons.push(`Restriction "${r}" — advert mentions self-employment/freelance.`);
-      }
+  applyKnownRestrictions(job, auth, reasons, (s) => (status = worst(status, s)));
+
+  if (reasons.length === 0) reasons.push('No conflicts with configured work authorisation.');
+  return { ...base, status, reasons, period, workContext: context };
+}
+
+function applyKnownRestrictions(job: JobLike, auth: WorkAuthLike, reasons: string[], bump: (s: Eligibility) => void) {
+  const text = `${job.title}\n${job.description}`.toLowerCase();
+  for (const r of auth.knownRestrictions) {
+    if (r.toLowerCase().includes('self-employ') && /self[- ]employ|freelance|umbrella/.test(text)) {
+      bump('NOT_ELIGIBLE');
+      reasons.push(`Restriction "${r}" — advert mentions self-employment/freelance.`);
+    }
+  }
+}
+
+/**
+ * Student → Skilled Worker: the application can be made now, but the job can only start
+ * after the course end date, and the employer must be able to sponsor.
+ */
+function sponsoredAfterCourse(
+  job: JobLike,
+  auth: WorkAuthLike,
+  base: Pick<EligibilityDetails, 'assumedHoursPerWeek' | 'sponsorship' | 'earliestStart'>,
+  period: StudyPeriod,
+): EligibilityDetails {
+  const reasons: string[] = [];
+  const s = base.sponsorship;
+  let status: Eligibility = 'POTENTIALLY_ELIGIBLE';
+  const earliestStart = auth.courseEnd ? new Date(auth.courseEnd).toISOString().slice(0, 10) : null;
+  reasons.push(`Full-time role: would start after the course ends${earliestStart ? ` (${earliestStart})` : ''}, with Skilled Worker sponsorship.`);
+
+  if (s.mention === 'NOT_OFFERED') {
+    status = 'NOT_ELIGIBLE';
+    reasons.push('The advert says sponsorship is not offered.');
+  } else if (s.mention === 'OFFERED') {
+    s.potentialOpportunity = true;
+    reasons.push('The advert mentions visa sponsorship (not guaranteed).');
+  } else if (job.sponsorLicensed === true) {
+    s.potentialOpportunity = true;
+    reasons.push(`Employer appears on the register of licensed sponsors as "${job.sponsorMatchName}". Sponsorship still depends on the role.`);
+  } else if (job.sponsorLicensed === false) {
+    status = 'NOT_ELIGIBLE';
+    reasons.push('Advert is silent on sponsorship and the employer was not found on the register of licensed sponsors.');
+  } else {
+    status = 'REQUIRES_REVIEW';
+    reasons.push('Sponsor register not loaded — cannot tell whether this employer can sponsor. Load it in Settings.');
+  }
+
+  if (!auth.courseEnd) {
+    status = worst(status, 'REQUIRES_REVIEW');
+    reasons.push('Course end date is not set, so the earliest start date is unknown.');
+  }
+  if (IMMEDIATE_START.test(`${job.title}\n${job.description}`)) {
+    status = worst(status, 'NOT_ELIGIBLE');
+    reasons.push('Advert asks for an immediate start, but the role could only start after the course ends.');
+  }
+
+  const salary = job.salaryMax ?? job.salaryMin;
+  if (auth.sponsoredRoleMinSalary && salary != null && job.salaryPeriod) {
+    const annual = annualise(salary, job.salaryPeriod, job.hoursPerWeek ?? 37.5);
+    if (annual != null && annual < auth.sponsoredRoleMinSalary) {
+      status = worst(status, 'NOT_ELIGIBLE');
+      reasons.push(`Salary ~£${Math.round(annual).toLocaleString('en-GB')} is below the configured sponsorship salary floor (£${auth.sponsoredRoleMinSalary.toLocaleString('en-GB')}).`);
     }
   }
 
-  if (reasons.length === 0) reasons.push('No conflicts with configured work authorisation.');
-  return { status, reasons, period, assumedHoursPerWeek: assumedHours, sponsorship };
+  applyKnownRestrictions(job, auth, reasons, (x) => (status = worst(status, x)));
+  return { ...base, status, reasons, period, workContext: 'SPONSORED_AFTER_COURSE', earliestStart };
 }

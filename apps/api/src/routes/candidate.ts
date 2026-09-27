@@ -3,7 +3,11 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { audit } from '../lib/audit.js';
+import mammoth from 'mammoth';
+import { ClaudeAiEngine } from '../ai/claude.js';
+import { integrations } from '../config/env.js';
 import { getCandidate } from '../lib/candidate.js';
+import { saveCvImport } from '../lib/cvImport.js';
 
 export const candidateRouter = Router();
 
@@ -41,7 +45,11 @@ const WorkAuthSchema = z.object({
   knownRestrictions: z.array(z.string().max(500)).optional(),
   guidanceVerifiedAt: date,
   notes: str(4000),
+  seekingSponsoredRoleAfterCourse: z.boolean().optional(),
+  sponsoredRoleMinSalary: z.number().min(0).nullable().optional(),
 });
+
+const REVIEW = z.enum(['DRAFT', 'APPROVED']);
 
 const collections = {
   education: {
@@ -114,7 +122,7 @@ candidateRouter.put('/candidate/work-authorisation', async (req, res) => {
 });
 
 for (const key of Object.keys(collections) as CollectionKey[]) {
-  const { schema } = collections[key];
+  const schema = collections[key].schema.extend({ status: REVIEW.optional() });
 
   candidateRouter.post(`/candidate/${key}`, async (req, res) => {
     const c = await getCandidate();
@@ -143,3 +151,54 @@ for (const key of Object.keys(collections) as CollectionKey[]) {
     res.json({ ok: true });
   });
 }
+
+// ─────────────────────────────── CV import + review ─────────────────────
+
+const ImportSchema = z.object({ fileName: z.string().min(1).max(200), contentBase64: z.string().min(10) });
+
+candidateRouter.post('/candidate/import-cv', async (req, res) => {
+  if (!integrations.claude()) return res.status(503).json({ error: 'CV import needs Claude — set ANTHROPIC_API_KEY in apps/api/.env and restart.' });
+  const { fileName, contentBase64 } = ImportSchema.parse(req.body);
+  const buf = Buffer.from(contentBase64, 'base64');
+  if (buf.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'File too large (max 10 MB)' });
+  const isPdf = buf.subarray(0, 4).toString() === '%PDF';
+  const isDocx = buf.subarray(0, 2).toString() === 'PK' && /\.docx$/i.test(fileName);
+  if (!isPdf && !isDocx) return res.status(415).json({ error: 'Upload a PDF or DOCX file.' });
+  const text = isDocx ? (await mammoth.extractRawText({ buffer: buf })).value : undefined;
+  const { data, promptVersion } = await new ClaudeAiEngine().importCv({ pdfBase64: isPdf ? contentBase64 : undefined, text, fileName });
+  const c = await getCandidate();
+  const counts = await saveCvImport(c.id, data, fileName);
+  res.status(201).json({ counts, promptVersion, candidate: await getCandidate() });
+});
+
+const ReviewSchema = z.object({
+  items: z.array(z.object({ collection: z.enum(['education', 'employment', 'projects', 'skills', 'certifications', 'evidence']), id: z.string(), action: z.enum(['APPROVE', 'REJECT']) })).max(500).optional(),
+  approveAll: z.boolean().optional(),
+});
+
+/** Approve drafts (they become usable by the agent) or reject them (deleted). */
+candidateRouter.post('/candidate/review', async (req, res) => {
+  const body = ReviewSchema.parse(req.body);
+  const c = await getCandidate();
+  let approved = 0;
+  let rejected = 0;
+  if (body.approveAll) {
+    for (const key of Object.keys(collections) as CollectionKey[]) {
+      const r = await (prisma as unknown as Record<string, { updateMany(a: unknown): Promise<{ count: number }> }>)[collections[key].model].updateMany({ where: { candidateId: c.id, status: 'DRAFT' }, data: { status: 'APPROVED' } });
+      approved += r.count;
+    }
+  }
+  for (const item of body.items ?? []) {
+    const d = delegate(item.collection);
+    if (!(await d.findFirst({ where: { id: item.id, candidateId: c.id } }))) continue;
+    if (item.action === 'APPROVE') {
+      await d.update({ where: { id: item.id }, data: { status: 'APPROVED' } });
+      approved++;
+    } else {
+      await d.delete({ where: { id: item.id } });
+      rejected++;
+    }
+  }
+  await audit('CANDIDATE_UPDATED', `Review: ${approved} approved, ${rejected} rejected`, { actor: 'user' });
+  res.json({ approved, rejected, candidate: await getCandidate() });
+});

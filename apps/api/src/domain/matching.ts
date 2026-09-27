@@ -69,6 +69,17 @@ export function annualise(amount: number, period: string | null | undefined, hou
   }
 }
 
+/** Estimated monthly pay for hourly-style work, with weekly hours capped (e.g. at the term-time limit). */
+export function estimateMonthlyPay(job: Pick<JobLike, 'salaryMin' | 'salaryMax' | 'salaryPeriod' | 'hoursPerWeek' | 'employmentType'>, hoursCap: number | null): number | null {
+  const rate = job.salaryMax ?? job.salaryMin;
+  if (rate == null || !job.salaryPeriod) return null;
+  const listedHours = job.hoursPerWeek ?? (job.employmentType === 'FULL_TIME' ? 37.5 : 16);
+  const hours = hoursCap != null ? Math.min(listedHours, hoursCap) : listedHours;
+  const perHour = hourly(rate, job.salaryPeriod, job.hoursPerWeek ?? 37.5);
+  if (perHour == null) return null;
+  return Math.round((perHour * hours * 52) / 12);
+}
+
 function hourly(amount: number, period: string | null | undefined, hoursPerWeek = 37.5): number | null {
   const a = annualise(amount, period, hoursPerWeek);
   return a == null ? null : a / 52 / hoursPerWeek;
@@ -76,6 +87,14 @@ function hourly(amount: number, period: string | null | undefined, hoursPerWeek 
 
 function candidateSkillNames(c: CandidateLike): { name: string; terms: string[] }[] {
   return c.skills.map((s) => ({ name: s.name, terms: unique([s.name, ...s.aliases].map((t) => t.trim()).filter(Boolean)) }));
+}
+
+// "No SIA licence required", "we'll fund your SIA licence", "training provided" → not a requirement.
+const NOT_REQUIRED = /\b(no|not|without|don't|do not|isn't|is not|n\/a)\b[^.]{0,40}\b(required|needed|necessary|essential)?|\b(we|we'll|we will)\b[^.]{0,30}\b(pay|fund|funded|provide|provided|help|support|cover)|\bfunded\b|\bcan be (obtained|arranged)\b/i;
+
+function requiresLicence(text: string, pattern: RegExp): boolean {
+  const sentences = text.split(/(?<=[.!?\n])\s*/);
+  return sentences.some((sentence) => pattern.test(sentence) && !NOT_REQUIRED.test(sentence));
 }
 
 export interface MatchInput {
@@ -127,7 +146,7 @@ export function computeMatch(input: MatchInput): MatchResult {
 
   // Hard requirements (licences) the candidate cannot evidence
   for (const hr of HARD_REQUIREMENT_PATTERNS) {
-    if (hr.pattern.test(text)) {
+    if (requiresLicence(text, hr.pattern)) {
       const has = candidate.certifications.some((c) => hasPhrase(c.name, hr.label.split(' ')[0])) ||
         candidate.skills.some((s) => hasPhrase(s.name, hr.label.split(' ')[0]) && /licen|check|clear/i.test(s.name)) ||
         candidate.evidence.some((e) => e.allowedForApplication && hasPhrase(e.claim, hr.label));

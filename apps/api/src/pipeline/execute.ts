@@ -62,9 +62,20 @@ export async function sourceAllowsDispatch(source: string, now = new Date()): Pr
 }
 
 /** READY_FOR_BROWSER → BROWSER_EXECUTING → (result) */
-export async function executeApplication(applicationId: string, opts: { candidate: FullCandidate; agentId: string; autoSubmit: boolean; actor?: string }) {
+export async function executeApplication(applicationId: string, opts: { candidate: FullCandidate; agentId: string; autoSubmit: boolean; reviewFirstN?: number; actor?: string }) {
   const agent = getBrowserAgent(opts.agentId);
-  const payload = await buildTaskPayload(applicationId, opts.candidate, opts.autoSubmit);
+  // Warm-up: the first N applications are filled in but stopped before submit for the user to check.
+  let autoSubmit = opts.autoSubmit;
+  let warmUp = false;
+  if ((opts.reviewFirstN ?? 0) > 0) {
+    const used = await prisma.application.count({ where: { warmUp: true } });
+    if (used < (opts.reviewFirstN ?? 0)) {
+      warmUp = true;
+      autoSubmit = false;
+    }
+  }
+  if (warmUp) await prisma.application.update({ where: { id: applicationId }, data: { warmUp: true } });
+  const payload = await buildTaskPayload(applicationId, opts.candidate, autoSubmit);
   const task = await prisma.browserTask.create({ data: { applicationId, agentType: agent.id, payload: json(payload) } });
   const finalPayload = { ...payload, cvFile: { ...payload.cvFile, downloadPath: payload.cvFile.downloadPath.replace('{taskId}', task.id) }, coverLetterFile: payload.coverLetterFile ? { ...payload.coverLetterFile, downloadPath: payload.coverLetterFile.downloadPath.replace('{taskId}', task.id) } : null };
   await prisma.browserTask.update({ where: { id: task.id }, data: { payload: json(finalPayload) } });
@@ -112,6 +123,14 @@ export async function applyBrowserResult(taskId: string, result: BrowserResult, 
     await notify('APPLICATION_SUBMITTED', `${simulated ? '[Simulated] ' : ''}Applied: ${job?.title}`, `${job?.company} — ${formatRef(app.seq)}`, app.id);
     return;
   }
+  if (app.warmUp && result.outcome === 'SUBMISSION_ATTEMPTED') {
+    const reason = 'Warm-up review: the form is filled in and waiting in your browser. Check it, press submit yourself, then click "I completed it manually".';
+    await transition(app.id, 'NEEDS_HUMAN', { exceptionType: 'REVIEW_BEFORE_SUBMIT', humanInterventionReason: reason, browserState, simulated, currentStep: null }, { actor, message: 'Ready for your review' });
+    await audit('HUMAN_INTERVENTION_REQUIRED', reason, { applicationId: app.id, actor, data: result });
+    const job = await prisma.job.findUnique({ where: { id: app.jobId } });
+    await notify('HUMAN_REQUIRED', `Review before submit: ${job?.title} — ${job?.company}`, reason, app.id);
+    return;
+  }
   if (result.outcome === 'SUBMITTED' || result.outcome === 'SUBMISSION_ATTEMPTED') {
     await transition(app.id, 'SUBMISSION_ATTEMPTED', { browserState, simulated, currentStep: 'Awaiting confirmation evidence' }, { actor, message: result.outcome === 'SUBMITTED' ? 'Reported submitted without evidence — awaiting confirmation' : `Stopped at ${result.stepReached ?? 'submit'}` });
     await audit('SUBMISSION_ATTEMPTED', 'Submission attempted; no confirmation evidence yet', { applicationId: app.id, actor, data: result });
@@ -119,6 +138,7 @@ export async function applyBrowserResult(taskId: string, result: BrowserResult, 
   }
   if (result.outcome === 'EXCEPTION' && result.exception) {
     const blocked = ['CAPTCHA', 'AUTOMATION_BLOCKED'].includes(result.exception.type);
+    if (app.warmUp) await prisma.application.update({ where: { id: app.id }, data: { warmUp: false } }); // didn't reach review; slot goes to the next one
     const reason = `${result.exception.type}: ${result.exception.detail}${result.unansweredQuestions?.length ? ` — Questions: ${result.unansweredQuestions.join(' | ')}` : ''}`;
     await transition(app.id, blocked ? 'BLOCKED' : 'NEEDS_HUMAN', { exceptionType: result.exception.type, humanInterventionReason: reason, browserState, currentStep: null }, { actor, message: blocked ? 'Automation restriction detected' : 'Human input required' });
     await audit('HUMAN_INTERVENTION_REQUIRED', reason, { applicationId: app.id, actor, data: result });
@@ -127,6 +147,7 @@ export async function applyBrowserResult(taskId: string, result: BrowserResult, 
     return;
   }
   const failure = result.error ?? 'Browser agent reported failure without detail';
+  if (app.warmUp) await prisma.application.update({ where: { id: app.id }, data: { warmUp: false } });
   await transition(app.id, 'FAILED', { failureReason: failure, browserState, currentStep: null }, { actor, message: 'Browser execution failed' });
   await audit('APPLICATION_FAILED', failure, { applicationId: app.id, actor, data: result });
   const status = await prisma.agentStatus.upsert({ where: { id: 1 }, create: { id: 1, consecutiveFailures: 1 }, update: { consecutiveFailures: { increment: 1 } } });
