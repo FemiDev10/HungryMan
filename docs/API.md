@@ -36,6 +36,7 @@ interface ApplicationRow {
          category: JobCategory | null; matchScore: number | null; eligibility: Eligibility | null };
   cvProfile: { id: string; name: string; slug: string } | null;
   cvFileName: string | null;
+  browserState: { stepReached?: string; fieldsFilled?: string[]; unansweredQuestions?: string[] } | null; // exception cards show stepReached
 }
 
 interface MatchResult {

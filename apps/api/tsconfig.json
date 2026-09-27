@@ -13,5 +13,5 @@
     "noUncheckedIndexedAccess": false
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/domain/fixtures.ts"]
 }
