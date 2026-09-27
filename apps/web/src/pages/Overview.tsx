@@ -1,8 +1,13 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
+  Circle,
+  PoundSterling,
   Inbox,
   ListChecks,
   Pause,
@@ -18,14 +23,14 @@ import {
   Handshake,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { AgentAction, AgentStatusView, ApplicationRow, Overview } from '../api/types';
+import type { AgentAction, AgentStatusView, ApplicationRow, Checklist, ChecklistItem, IncomeSummary, Overview } from '../api/types';
 import { useAction, useCandidate, useNow, useOverview } from '../lib/hooks';
-import { fmtDuration, fmtRelative, greeting } from '../lib/format';
+import { fmtDuration, fmtGBP, fmtRelative, greeting } from '../lib/format';
 import { IN_FLIGHT, humanize, STATUS_LABELS } from '../lib/labels';
 import { StatCard } from '../components/StatCard';
 import { AgentStateBadge, StatusBadge } from '../components/StatusBadge';
 import { NotificationItem } from '../components/NotificationBell';
-import { Button, Card, cx, EmptyState, ErrorBox, LoadingBlock, SimulatedBadge } from '../components/ui';
+import { Badge, Button, Card, cx, EmptyState, ErrorBox, LoadingBlock, SimulatedBadge } from '../components/ui';
 
 function Elapsed({ agent, fetchedAt }: { agent: AgentStatusView; fetchedAt: number }) {
   const now = useNow(1000);
@@ -49,7 +54,7 @@ const CONTROLS: { action: AgentAction; label: string; icon: typeof Play; variant
 function AgentControls({ agent }: { agent: AgentStatusView }) {
   const control = useAction((a: AgentAction) => api.agentControl(a), {
     success: (r) => r?.message ?? 'Done',
-    invalidate: [['overview'], ['applications'], ['notifications']],
+    invalidate: [['overview'], ['applications'], ['notifications'], ['checklist']],
   });
   const disabled = (a: AgentAction) =>
     (a === 'PAUSE' && agent.state !== 'RUNNING') || (a === 'RESUME' && agent.state === 'RUNNING') || (a === 'STOP' && agent.state === 'STOPPED');
@@ -153,6 +158,150 @@ function LiveAgentCard({ agent, fetchedAt }: { agent: AgentStatusView; fetchedAt
   );
 }
 
+// ───────────── Setup checklist ─────────────
+
+/** Deep links into the right tab for items whose API link points at a whole page. */
+const DEEP_LINKS: Record<string, [string, string]> = {
+  work_auth: ['/profile', '/profile?tab=work'],
+  course_end: ['/profile', '/profile?tab=work'],
+  evidence: ['/profile', '/profile?tab=evidence'],
+  sponsors: ['/settings', '/settings?tab=sponsors'],
+};
+
+function ChecklistRow({ item }: { item: ChecklistItem }) {
+  const deep = DEEP_LINKS[item.key];
+  const link = deep && deep[0] === item.link ? deep[1] : item.link;
+  const external = /^https?:/.test(link);
+  const body = (
+    <>
+      {item.done ? (
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+      ) : (
+        <Circle className={cx('mt-0.5 size-4 shrink-0', item.required ? 'text-amber-500' : 'text-subtle')} />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className={cx('text-sm font-medium', item.done ? 'text-muted' : 'text-fg')}>{item.label}</span>
+          {!item.done && item.required && <Badge tone="amber">Required</Badge>}
+          {!item.done && !item.required && <Badge tone="grey">Optional</Badge>}
+        </span>
+        <span className="mt-0.5 block text-xs text-muted">{item.detail}</span>
+      </span>
+      {!item.done && <span className="shrink-0 self-center text-xs font-medium text-muted group-hover:text-fg">Fix →</span>}
+    </>
+  );
+  const cls = 'group flex items-start gap-3 px-4 py-2.5 hover:bg-surface-2';
+  return external ? (
+    <a href={link} target="_blank" rel="noopener noreferrer" className={cls}>
+      {body}
+    </a>
+  ) : (
+    <Link to={link} className={cls}>
+      {body}
+    </Link>
+  );
+}
+
+function rank(i: ChecklistItem) {
+  return i.done ? 2 : i.required ? 0 : 1;
+}
+
+function SetupChecklist({ data }: { data: Checklist }) {
+  const [expanded, setExpanded] = useState(false);
+  const items = [...data.items].sort((a, b) => rank(a) - rank(b));
+  const doneCount = data.items.filter((i) => i.done).length;
+  const requiredLeft = data.items.filter((i) => i.required && !i.done).length;
+
+  if (data.ready && !expanded) {
+    return (
+      <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted">
+        <CheckCircle2 className="size-4 text-emerald-500" />
+        <span>
+          Setup complete · {doneCount}/{data.items.length} checks done
+        </span>
+        <button type="button" className="inline-flex items-center gap-0.5 text-xs font-medium underline-offset-2 hover:text-fg hover:underline" onClick={() => setExpanded(true)}>
+          Show checklist <ChevronDown className="size-3" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <Card
+      className={cx('mb-6', !data.ready && 'ring-1 ring-amber-500/35')}
+      title={data.ready ? 'Setup checklist' : 'Finish setting up before the agent applies for you'}
+      subtitle={
+        data.ready
+          ? `${doneCount} of ${data.items.length} done`
+          : `${requiredLeft} required ${requiredLeft === 1 ? 'step' : 'steps'} left · ${doneCount} of ${data.items.length} done`
+      }
+      actions={
+        data.ready ? (
+          <Button size="sm" variant="ghost" onClick={() => setExpanded(false)}>
+            Hide
+          </Button>
+        ) : undefined
+      }
+      bodyClassName="p-0"
+    >
+      <div className="h-1 bg-surface-3">
+        <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(doneCount / Math.max(1, data.items.length)) * 100}%` }} />
+      </div>
+      <ul className="divide-y divide-line">
+        {items.map((i) => (
+          <li key={i.key}>
+            <ChecklistRow item={i} />
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+// ───────────── Income goal ─────────────
+
+function IncomeCard({ income }: { income: IncomeSummary }) {
+  const p = income.goal > 0 ? Math.min(1, income.secured / income.goal) : 0;
+  const met = income.goal > 0 && income.secured >= income.goal;
+  return (
+    <Card
+      title="Income goal"
+      subtitle="Part-time general work · estimates before tax"
+      actions={
+        <Link to="/settings" className="text-xs font-medium text-muted hover:text-fg">
+          Change goal
+        </Link>
+      }
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="flex items-baseline gap-1.5">
+          <PoundSterling className="size-4 self-center text-subtle" />
+          <span className="text-2xl font-semibold tabular-nums text-fg">{fmtGBP(income.secured)}</span>
+          <span className="text-sm text-muted">of {fmtGBP(income.goal)}/month secured</span>
+        </div>
+        <span className={cx('text-sm font-medium tabular-nums', met ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted')}>{Math.round(p * 100)}%</span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={income.goal} aria-valuenow={income.secured}>
+        <div className={cx('h-full rounded-full transition-all', met ? 'bg-emerald-500' : 'bg-accent')} style={{ width: `${p * 100}%` }} />
+      </div>
+      <p className="mt-3 text-sm text-muted">
+        {income.appliedCount > 0 ? (
+          <>
+            <b className="text-fg">~{fmtGBP(income.appliedPotential)}/month</b> potential across <b className="text-fg">{income.appliedCount}</b> active
+            general-work {income.appliedCount === 1 ? 'application' : 'applications'}.
+          </>
+        ) : (
+          'No active general-work applications with a pay estimate yet.'
+        )}
+      </p>
+      <p className="mt-1.5 text-xs text-subtle">
+        Secured = jobs you've marked as an Offer. Pay is estimated from the advertised hourly rate × hours (capped at your term-time limit), before tax and
+        National Insurance.
+      </p>
+    </Card>
+  );
+}
+
 function queueMarker(r: ApplicationRow, currentId: string | undefined) {
   if (r.status === 'SUBMITTED') return { char: '✓', cls: 'text-emerald-500', title: 'Submitted' };
   if (r.status === 'FAILED') return { char: '✕', cls: 'text-red-500', title: 'Failed' };
@@ -234,6 +383,7 @@ function Summary({ data, name }: { data: Overview; name?: string }) {
 export function OverviewPage() {
   const q = useOverview();
   const candidate = useCandidate();
+  const checklist = useQuery({ queryKey: ['checklist'], queryFn: api.checklist, refetchInterval: 60_000 });
 
   if (q.isLoading) return <LoadingBlock />;
   if (q.error || !q.data) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />;
@@ -242,6 +392,8 @@ export function OverviewPage() {
   return (
     <>
       <Summary data={d} name={candidate.data?.fullName} />
+
+      {checklist.data && <SetupChecklist data={checklist.data} />}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Discovered today" value={d.today.discovered} icon={<Search className="size-4" />} to="/history" />
@@ -268,6 +420,7 @@ export function OverviewPage() {
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_1fr] [&>*]:min-w-0">
         <div className="space-y-6">
           <LiveAgentCard agent={d.agent} fetchedAt={q.dataUpdatedAt} />
+          {d.income && <IncomeCard income={d.income} />}
         </div>
         <QueuePreview rows={d.queuePreview} currentId={d.agent.currentApplication?.id} />
       </div>

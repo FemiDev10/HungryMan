@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, ExternalLink, PartyPopper, RotateCcw, SkipForward } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Eye, PartyPopper, RotateCcw, SkipForward } from 'lucide-react';
 import { api } from '../api/client';
 import type { ApplicationRow } from '../api/types';
 import { Modal } from '../components/Modal';
-import { StatusBadge } from '../components/StatusBadge';
+import { ApplicationChips, StatusBadge } from '../components/StatusBadge';
 import { Badge, Button, buttonClass, Card, EmptyState, ErrorBox, Field, LoadingBlock, MatchPill, PageHeader, SimulatedBadge } from '../components/ui';
 import { POLL_MS, useAction } from '../lib/hooks';
 import { CATEGORY_LABELS, EXCEPTION_LABELS } from '../lib/labels';
@@ -36,7 +36,7 @@ function MarkSubmittedModal({ app, onClose, onSubmit, busy }: {
     <Modal
       open={!!app}
       onClose={onClose}
-      title="Mark as submitted manually"
+      title={app?.exceptionType === 'REVIEW_BEFORE_SUBMIT' ? 'I submitted it' : 'Mark as submitted manually'}
       size="sm"
       footer={
         <>
@@ -56,7 +56,8 @@ function MarkSubmittedModal({ app, onClose, onSubmit, busy }: {
       {app && (
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            Confirm you completed <b className="text-fg">{app.job.title}</b> at <b className="text-fg">{app.job.company}</b> yourself.
+            {app.exceptionType === 'REVIEW_BEFORE_SUBMIT' ? 'Confirm you checked and submitted' : 'Confirm you completed'}{' '}
+            <b className="text-fg">{app.job.title}</b> at <b className="text-fg">{app.job.company}</b> yourself.
           </p>
           <Field label="Confirmation number (optional)">
             <input className="input" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} placeholder="e.g. REF-123456" />
@@ -77,6 +78,7 @@ function ExceptionCard({ r, onResolve, onMark, pending }: {
   pending: string | null;
 }) {
   const step = stepReached(r);
+  const review = r.exceptionType === 'REVIEW_BEFORE_SUBMIT';
   return (
     <Card className="flex flex-col" bodyClassName="flex flex-1 flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
@@ -93,17 +95,37 @@ function ExceptionCard({ r, onResolve, onMark, pending }: {
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        {r.exceptionType && <Badge tone="amber">{EXCEPTION_LABELS[r.exceptionType] ?? r.exceptionType}</Badge>}
+        {r.exceptionType && (
+          <Badge tone={review ? 'blue' : 'amber'}>
+            {review && <Eye className="size-3" />}
+            {EXCEPTION_LABELS[r.exceptionType] ?? r.exceptionType}
+          </Badge>
+        )}
         {r.job.category && <Badge tone="slate">{CATEGORY_LABELS[r.job.category]}</Badge>}
         <MatchPill score={r.job.matchScore} />
         {r.simulated && <SimulatedBadge />}
+        <ApplicationChips
+          workContext={r.workContext}
+          warmUp={r.warmUp}
+          track={r.track}
+          sponsorLicensed={r.job.sponsorLicensed}
+          estMonthlyPay={r.job.estMonthlyPay}
+        />
         <span className="font-mono text-[11px] text-subtle">{r.ref}</span>
       </div>
 
-      <div className="rounded-lg border border-amber-500/25 bg-amber-500/6 p-3 text-sm">
-        <div className="text-[11px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">What's needed</div>
-        <p className="mt-1 text-fg">{r.humanInterventionReason ?? r.failureReason ?? 'The agent could not continue on this application.'}</p>
-      </div>
+      {review ? (
+        <div className="rounded-lg border border-sky-500/25 bg-sky-500/6 p-3 text-sm">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-sky-700 dark:text-sky-400">Ready for your review</div>
+          <p className="mt-1 text-fg">The form is filled in, in your Chrome. Check it and press submit yourself.</p>
+          {r.humanInterventionReason && <p className="mt-1 text-xs text-muted">{r.humanInterventionReason}</p>}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-amber-500/25 bg-amber-500/6 p-3 text-sm">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">What's needed</div>
+          <p className="mt-1 text-fg">{r.humanInterventionReason ?? r.failureReason ?? 'The agent could not continue on this application.'}</p>
+        </div>
+      )}
 
       <dl className="grid grid-cols-2 gap-3 text-sm">
         <div>
@@ -117,12 +139,25 @@ function ExceptionCard({ r, onResolve, onMark, pending }: {
       </dl>
 
       <div className="mt-auto flex flex-wrap gap-2 border-t border-line pt-4">
-        <a href={r.job.url} target="_blank" rel="noopener noreferrer" className={buttonClass('primary', 'sm')}>
-          <ExternalLink className="size-3.5" /> Open job
-        </a>
-        <Button size="sm" icon={<CheckCircle2 className="size-3.5" />} onClick={onMark}>
-          I completed it manually
-        </Button>
+        {review ? (
+          <>
+            <Button size="sm" variant="primary" icon={<CheckCircle2 className="size-3.5" />} onClick={onMark}>
+              I submitted it
+            </Button>
+            <a href={r.job.url} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
+              <ExternalLink className="size-3.5" /> Open job
+            </a>
+          </>
+        ) : (
+          <>
+            <a href={r.job.url} target="_blank" rel="noopener noreferrer" className={buttonClass('primary', 'sm')}>
+              <ExternalLink className="size-3.5" /> Open job
+            </a>
+            <Button size="sm" icon={<CheckCircle2 className="size-3.5" />} onClick={onMark}>
+              I completed it manually
+            </Button>
+          </>
+        )}
         <Button
           size="sm"
           icon={<RotateCcw className="size-3.5" />}
@@ -163,7 +198,7 @@ export function ExceptionsPage() {
     <>
       <PageHeader
         title="Exceptions"
-        description="Applications the agent paused because they need something only you can provide — a CAPTCHA, a video answer, a login, or missing data."
+        description="Applications the agent paused because they need something only you can provide — a CAPTCHA, a video answer, a login, or missing data. Warm-up applications also stop here so you can check them before submitting."
       />
       {q.isLoading ? (
         <LoadingBlock />

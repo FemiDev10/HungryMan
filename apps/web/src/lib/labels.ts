@@ -7,6 +7,7 @@ import type {
   JobCategory,
   Outcome,
   Track,
+  WorkContext,
 } from '../api/types';
 
 const ACRONYMS: Record<string, string> = { UX: 'UX', AI: 'AI', UK: 'UK', CV: 'CV', URL: 'URL', ATS: 'ATS' };
@@ -123,6 +124,7 @@ export function eligibilityTone(e: Eligibility): Tone {
 }
 
 export const EXCEPTION_LABELS: Record<ExceptionType, string> = {
+  REVIEW_BEFORE_SUBMIT: 'Review before submit',
   CAPTCHA: 'CAPTCHA',
   VIDEO_QUESTION: 'Video question',
   LIVE_INTERVIEW: 'Live interview',
@@ -155,6 +157,15 @@ export function outcomeTone(o: Outcome): Tone {
 export const EVIDENCE_KINDS: EvidenceKind[] = [
   'SKILL', 'EXPERIENCE', 'ACHIEVEMENT', 'EDUCATION', 'PROJECT', 'CERTIFICATION', 'TRAIT', 'AVAILABILITY', 'OTHER',
 ];
+
+export const WORK_CONTEXT_LABELS: Record<WorkContext, string> = {
+  STANDARD: 'Standard',
+  STUDENT_PART_TIME: 'Part-time while studying',
+  SPONSORED_AFTER_COURSE: 'Sponsored · starts after course',
+};
+export function workContextTone(w: WorkContext): Tone {
+  return w === 'SPONSORED_AFTER_COURSE' ? 'violet' : w === 'STUDENT_PART_TIME' ? 'blue' : 'slate';
+}
 
 export const TRACK_LABELS: Record<Track, string> = { PROFESSIONAL: 'Professional', GENERAL: 'General work' };
 

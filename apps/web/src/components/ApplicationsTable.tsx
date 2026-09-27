@@ -3,7 +3,7 @@ import { FileText } from 'lucide-react';
 import type { ApplicationRow } from '../api/types';
 import { CATEGORY_LABELS } from '../lib/labels';
 import { fmtRelative, fmtDateTime } from '../lib/format';
-import { EligibilityBadge, OutcomeBadge, StatusBadge } from './StatusBadge';
+import { ApplicationChips, EligibilityBadge, OutcomeBadge, StatusBadge } from './StatusBadge';
 import { Table, type Column } from './Table';
 import { Badge, EmptyState, MatchPill, SimulatedBadge } from './ui';
 
@@ -25,6 +25,15 @@ function JobCell({ r }: { r: ApplicationRow }) {
         )}
         {r.simulated && <SimulatedBadge />}
         <OutcomeBadge value={r.outcome} />
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-1 empty:hidden">
+        <ApplicationChips
+          workContext={r.workContext}
+          warmUp={r.warmUp}
+          track={r.track}
+          sponsorLicensed={r.job.sponsorLicensed}
+          estMonthlyPay={r.job.estMonthlyPay}
+        />
       </div>
     </div>
   );
@@ -95,6 +104,13 @@ export function ApplicationsTable({ rows, emptyTitle = 'Nothing here yet', empty
                 <EligibilityBadge value={r.job.eligibility} />
                 {r.simulated && <SimulatedBadge />}
                 <OutcomeBadge value={r.outcome} />
+                <ApplicationChips
+                  workContext={r.workContext}
+                  warmUp={r.warmUp}
+                  track={r.track}
+                  sponsorLicensed={r.job.sponsorLicensed}
+                  estMonthlyPay={r.job.estMonthlyPay}
+                />
               </div>
               <div className="mt-1.5 line-clamp-1 text-xs text-subtle">
                 {r.lastAction ?? r.currentStep ?? '—'} · {fmtRelative(r.updatedAt)}

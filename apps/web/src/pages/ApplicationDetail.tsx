@@ -26,11 +26,13 @@ import type {
   Job,
   MatchResult,
   Outcome,
+  Track,
+  WorkContext,
 } from '../api/types';
 import { Modal } from '../components/Modal';
 import { ValidationReportView } from '../components/ValidationReport';
 import { CvContent } from '../components/CvContent';
-import { EligibilityBadge, OutcomeBadge, StatusBadge } from '../components/StatusBadge';
+import { ApplicationChips, EligibilityBadge, OutcomeBadge, SponsorBadge, StatusBadge, WorkContextBadge } from '../components/StatusBadge';
 import { Table } from '../components/Table';
 import {
   Badge,
@@ -52,7 +54,7 @@ import {
   SimulatedBadge,
 } from '../components/ui';
 import { useAction } from '../lib/hooks';
-import { CATEGORY_LABELS, EXCEPTION_LABELS, humanize, OUTCOME_LABELS, OUTCOMES, TRACK_LABELS } from '../lib/labels';
+import { CATEGORY_LABELS, EXCEPTION_LABELS, humanize, OUTCOME_LABELS, OUTCOMES, TRACK_LABELS, WORK_CONTEXT_LABELS } from '../lib/labels';
 import { fmtBytes, fmtDate, fmtDateTime, fmtRelative } from '../lib/format';
 
 // ───────────── Status timeline ─────────────
@@ -162,12 +164,34 @@ function ClassificationCard({ job }: { job: Job }) {
   );
 }
 
-function EligibilityCard({ job }: { job: Job }) {
+function EligibilityCard({ job, workContext, track }: { job: Job; workContext: WorkContext | null; track: Track | null }) {
   const e = job.eligibilityDetails as EligibilityDetails | null;
   const status = e?.status ?? job.eligibility;
+  const ctx = e?.workContext ?? workContext;
+  const licensed = e?.sponsorship?.licensedSponsor ?? job.sponsorLicensed;
+  const registerName = e?.sponsorship?.registerName ?? job.sponsorMatchName;
   return (
     <Card title="Eligibility" actions={<EligibilityBadge value={status} />}>
       <div className="space-y-3 text-sm">
+        <KeyValue
+          items={[
+            ['Work context', ctx ? (ctx === 'STANDARD' ? <Badge tone="slate">{WORK_CONTEXT_LABELS.STANDARD}</Badge> : <WorkContextBadge value={ctx} />) : '—'],
+            ...(e?.earliestStart ? ([['Start date', `Can start from ${fmtDate(e.earliestStart)}`]] as [ReactNode, ReactNode][]) : []),
+            ...((track === 'PROFESSIONAL' || licensed != null ? [[
+              'Sponsor register',
+              licensed == null ? (
+                <span className="text-muted">Not checked — load the register in Settings</span>
+              ) : licensed ? (
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <SponsorBadge licensed registerName={registerName} />
+                  {registerName && <span className="text-muted">as “{registerName}”</span>}
+                </span>
+              ) : (
+                <SponsorBadge licensed={false} />
+              ),
+            ]] : []) as [ReactNode, ReactNode][]),
+          ]}
+        />
         {e?.reasons?.length ? (
           <ul className="list-disc space-y-1 pl-5 text-muted">
             {e.reasons.map((r, i) => (
@@ -616,6 +640,14 @@ export function ApplicationDetailPage() {
             <OutcomeBadge value={a.outcome} />
             <MatchPill score={job.matchScore} />
             <EligibilityBadge value={job.eligibility} />
+            <ApplicationChips
+              workContext={a.workContext}
+              warmUp={a.warmUp}
+              track={a.track}
+              sponsorLicensed={job.sponsorLicensed}
+              registerName={job.sponsorMatchName}
+              estMonthlyPay={job.estMonthlyPay}
+            />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -639,6 +671,9 @@ export function ApplicationDetailPage() {
           <div className="font-medium">
             {a.exceptionType ? EXCEPTION_LABELS[a.exceptionType] : a.status === 'FAILED' ? 'Application failed' : 'Needs your attention'}
           </div>
+          {a.exceptionType === 'REVIEW_BEFORE_SUBMIT' && (
+            <div className="mt-0.5">The form is filled in, in your Chrome. Check it and press submit yourself.</div>
+          )}
           <div className="mt-0.5">{a.humanInterventionReason ?? a.failureReason ?? 'No reason recorded.'}</div>
           {a.status !== 'FAILED' && (
             <Link to="/exceptions" className="mt-1 inline-block text-xs font-medium underline underline-offset-2">
@@ -719,7 +754,7 @@ export function ApplicationDetailPage() {
             </Card>
           )}
           <ClassificationCard job={job} />
-          <EligibilityCard job={job} />
+          <EligibilityCard job={job} workContext={a.workContext} track={a.track} />
           {a.browserState && Object.keys(a.browserState).length > 0 && (
             <Card title="Browser state" subtitle="Last step reached and fields filled">
               <JsonBlock value={a.browserState} />

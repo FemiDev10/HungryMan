@@ -8,6 +8,8 @@ import type {
   AuditLog,
   Candidate,
   CandidateCollection,
+  Checklist,
+  CvImportResult,
   CvPreview,
   CvProfile,
   ImportJobBody,
@@ -17,8 +19,11 @@ import type {
   Outcome,
   Overview,
   Paged,
+  ReviewItem,
   Settings,
   SourceConfig,
+  SponsorCheck,
+  SponsorRegisterStatus,
   WorkAuthorisation,
 } from './types';
 
@@ -120,6 +125,7 @@ export const api = {
 
   // dashboard / agent
   overview: () => request<Overview>('/dashboard/overview'),
+  checklist: () => request<Checklist>('/dashboard/checklist'),
   agentStatus: () => request<AgentStatusView>('/agent/status'),
   agentControl: (action: AgentAction) => post<{ ok: true; message: string }>('/agent/control', { action }),
 
@@ -149,6 +155,9 @@ export const api = {
   createItem: (col: CandidateCollection, body: unknown) => post<unknown>(`/candidate/${col}`, body),
   updateItem: (col: CandidateCollection, id: string, body: unknown) => put<unknown>(`/candidate/${col}/${id}`, body),
   deleteItem: (col: CandidateCollection, id: string) => del<unknown>(`/candidate/${col}/${id}`),
+  importCv: (fileName: string, contentBase64: string) => post<CvImportResult>('/candidate/import-cv', { fileName, contentBase64 }),
+  reviewItems: (body: { items?: ReviewItem[]; approveAll?: boolean }) =>
+    post<{ approved: number; rejected: number; candidate: Candidate }>('/candidate/review', body),
 
   // cv profiles
   cvProfiles: () => request<CvProfile[]>('/cv-profiles'),
@@ -167,6 +176,10 @@ export const api = {
   settings: () => request<Settings>('/settings'),
   updateSettings: (body: Partial<Settings>) => put<Settings>('/settings', body),
   sources: () => request<SourceConfig[]>('/sources'),
+  sponsorStatus: () => request<SponsorRegisterStatus>('/sponsors/status'),
+  refreshSponsors: () => post<{ ok: true; rows: number; status: SponsorRegisterStatus }>('/sponsors/refresh'),
+  uploadSponsors: (csvBase64: string) => post<{ ok: true; rows: number; status: SponsorRegisterStatus }>('/sponsors/upload', { csvBase64 }),
+  checkSponsor: (company: string) => request<SponsorCheck>(`/sponsors/check${qs({ company })}`),
   updateSource: (source: string, body: Partial<SourceConfig>) => put<SourceConfig>(`/sources/${encodeURIComponent(source)}`, body),
 
   // audit / notifications / privacy

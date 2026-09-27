@@ -10,8 +10,10 @@ export type ApplicationStatus =
   | 'CV_GENERATING' | 'CV_VALIDATED' | 'APPLICATION_PREPARING' | 'READY_FOR_BROWSER' | 'BROWSER_EXECUTING'
   | 'SUBMISSION_ATTEMPTED' | 'SUBMITTED' | 'SKIPPED' | 'REJECTED_BY_RULE' | 'NEEDS_HUMAN' | 'BLOCKED' | 'FAILED'
   | 'EXPIRED' | 'DUPLICATE';
+export type ReviewStatus = 'DRAFT' | 'APPROVED';
+export type WorkContext = 'STANDARD' | 'STUDENT_PART_TIME' | 'SPONSORED_AFTER_COURSE';
 export type ExceptionType =
-  | 'CAPTCHA' | 'VIDEO_QUESTION' | 'LIVE_INTERVIEW' | 'UNSUPPORTED_FIELD' | 'MISSING_CANDIDATE_DATA'
+  | 'REVIEW_BEFORE_SUBMIT' | 'CAPTCHA' | 'VIDEO_QUESTION' | 'LIVE_INTERVIEW' | 'UNSUPPORTED_FIELD' | 'MISSING_CANDIDATE_DATA'
   | 'IDENTITY_VERIFICATION' | 'APPLICATION_REQUIRES_SIGNATURE' | 'AUTOMATION_BLOCKED' | 'UNEXPECTED_QUESTION'
   | 'PAYMENT_REQUIRED' | 'DUPLICATE_APPLICATION' | 'SITE_ERROR' | 'LOGIN_REQUIRED' | 'CV_VALIDATION_FAILED';
 export type Outcome = 'NONE' | 'REJECTED' | 'ASSESSMENT' | 'INTERVIEW' | 'OFFER' | 'WITHDRAWN';
@@ -29,6 +31,9 @@ export interface ApplicationRow {
   ref: string;
   status: ApplicationStatus;
   track: Track | null;
+  workContext: WorkContext | null;
+  /** One of the first N applications — held before submit for the user to review. */
+  warmUp: boolean;
   currentStep: string | null;
   lastAction: string | null;
   createdAt: string;
@@ -51,6 +56,8 @@ export interface ApplicationRow {
     category: JobCategory | null;
     matchScore: number | null;
     eligibility: Eligibility | null;
+    estMonthlyPay: number | null;
+    sponsorLicensed: boolean | null;
   };
   cvProfile: { id: string; name: string; slug: string } | null;
   cvFileName: string | null;
@@ -93,7 +100,20 @@ export interface JobClassification {
 export interface EligibilityDetails {
   status: Eligibility;
   reasons: string[];
-  sponsorship: { mention: string; evidence: string | null; note: string };
+  period?: 'TERM' | 'VACATION' | 'NOT_STUDYING';
+  workContext?: WorkContext;
+  assumedHoursPerWeek?: number | null;
+  /** ISO date the job could start, when constrained (e.g. after the course ends). */
+  earliestStart?: string | null;
+  sponsorship: {
+    mention: string;
+    evidence: string | null;
+    note: string;
+    potentialOpportunity?: boolean;
+    /** true = on the register, false = not found, null = register not loaded. */
+    licensedSponsor?: boolean | null;
+    registerName?: string | null;
+  };
   checks?: unknown[];
 }
 
@@ -132,6 +152,9 @@ export interface Job {
   match: MatchResult | null;
   matchScore: number | null;
   analysisVersion: string | null;
+  sponsorLicensed: boolean | null;
+  sponsorMatchName: string | null;
+  estMonthlyPay: number | null;
 }
 
 export interface ValidationReport {
@@ -217,6 +240,30 @@ export interface Overview {
   agent: AgentStatusView;
   queuePreview: ApplicationRow[];
   recentNotifications: Notification[];
+  income?: IncomeSummary;
+}
+
+/** Estimated monthly pay (before tax) from general-work jobs, against the income goal. */
+export interface IncomeSummary {
+  goal: number;
+  /** Sum of est. monthly pay from jobs with an OFFER. */
+  secured: number;
+  /** Sum of est. monthly pay across active submitted general-work applications. */
+  appliedPotential: number;
+  appliedCount: number;
+}
+
+export interface ChecklistItem {
+  key: string;
+  label: string;
+  done: boolean;
+  detail: string;
+  link: string;
+  required: boolean;
+}
+export interface Checklist {
+  items: ChecklistItem[];
+  ready: boolean;
 }
 
 export type AgentAction = 'RUN_NOW' | 'DISCOVER_NOW' | 'PAUSE' | 'RESUME' | 'STOP' | 'RETRY_FAILED' | 'RETRY_BLOCKED';
@@ -245,6 +292,7 @@ export interface Meta {
     outcomes: Outcome[];
     evidenceKinds: EvidenceKind[];
     tracks: Track[];
+    workContexts?: WorkContext[];
   };
   integrations: { claude: boolean; reed: boolean; adzuna: boolean; browserAgents: string[] };
   version: string;
@@ -283,6 +331,8 @@ export interface WorkAuthorisation {
   visaExpiry: string | null;
   vacationPeriods: VacationPeriod[];
   knownRestrictions: string[];
+  seekingSponsoredRoleAfterCourse: boolean;
+  sponsoredRoleMinSalary: number | null;
   guidanceVerifiedAt: string | null;
   notes: string | null;
   updatedAt?: string;
@@ -290,6 +340,7 @@ export interface WorkAuthorisation {
 
 export interface Education {
   id: string;
+  status: ReviewStatus;
   institution: string;
   qualification: string;
   field: string | null;
@@ -303,6 +354,7 @@ export interface Education {
 
 export interface Employment {
   id: string;
+  status: ReviewStatus;
   employer: string;
   title: string;
   location: string | null;
@@ -317,6 +369,7 @@ export interface Employment {
 
 export interface Project {
   id: string;
+  status: ReviewStatus;
   name: string;
   role: string | null;
   url: string | null;
@@ -330,6 +383,7 @@ export interface Project {
 
 export interface Skill {
   id: string;
+  status: ReviewStatus;
   name: string;
   aliases: string[];
   level: string | null;
@@ -339,6 +393,7 @@ export interface Skill {
 
 export interface Certification {
   id: string;
+  status: ReviewStatus;
   name: string;
   issuer: string | null;
   issuedAt: string | null;
@@ -350,6 +405,7 @@ export interface Certification {
 
 export interface Evidence {
   id: string;
+  status: ReviewStatus;
   kind: EvidenceKind;
   claim: string;
   source: string;
@@ -386,6 +442,18 @@ export interface Candidate {
   skills: Skill[];
   certifications: Certification[];
   evidence: Evidence[];
+}
+
+export interface CvImportResult {
+  counts: Record<string, number>;
+  promptVersion?: string;
+  candidate: Candidate;
+}
+
+export interface ReviewItem {
+  collection: CandidateCollection;
+  id: string;
+  action: 'APPROVE' | 'REJECT';
 }
 
 export type CandidateCollection = 'education' | 'employment' | 'projects' | 'skills' | 'certifications' | 'evidence';
@@ -453,6 +521,8 @@ export interface Settings {
   timezone: string;
   searchCriteria: { professional?: SearchCriteriaTrack; general?: SearchCriteriaTrack };
   termTimeOverride: null | 'TERM' | 'VACATION';
+  reviewFirstN: number;
+  monthlyIncomeGoal: number;
   updatedAt?: string;
 }
 
@@ -497,4 +567,20 @@ export interface ImportJobBody {
   employmentType?: string;
   hoursText?: string;
   closingDate?: string;
+}
+
+// ───────────── Sponsor register ─────────────
+
+export interface SponsorRegisterStatus {
+  loaded: boolean;
+  rows: number;
+  importedAt: string | null;
+  sourceUrl: string | null;
+  lastError: string | null;
+}
+
+export interface SponsorCheck {
+  company: string;
+  /** null = register not loaded. */
+  result: { licensed: boolean; name: string | null } | null;
 }

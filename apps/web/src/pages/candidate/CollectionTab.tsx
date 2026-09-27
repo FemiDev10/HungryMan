@@ -1,12 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Check, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { api } from '../../api/client';
-import type { CandidateCollection } from '../../api/types';
+import type { CandidateCollection, ReviewStatus } from '../../api/types';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { Modal } from '../../components/Modal';
 import { MultiSelect } from '../../components/MultiSelect';
 import { TagInput } from '../../components/TagInput';
-import { Button, Card, EmptyState, Field, Select, Toggle, cx } from '../../components/ui';
+import { Badge, Button, Card, EmptyState, Field, Select, Toggle, cx } from '../../components/ui';
 import { useAction } from '../../lib/hooks';
 import { CATEGORIES, CATEGORY_LABELS } from '../../lib/labels';
 import { nullIfEmpty, numOrNull, toDateInput } from '../../lib/format';
@@ -142,7 +142,9 @@ export function ItemForm({ fields, values, setValues }: { fields: FieldDef[]; va
   );
 }
 
-export interface CollectionTabProps<T extends { id: string }> {
+type Item = { id: string; status?: ReviewStatus };
+
+export interface CollectionTabProps<T extends Item> {
   col: CandidateCollection;
   title: string;
   singular: string;
@@ -156,7 +158,7 @@ export interface CollectionTabProps<T extends { id: string }> {
   sort?: (a: T, b: T) => number;
 }
 
-export function CollectionTab<T extends { id: string }>({ col, title, singular, description, items, fields, render, banner, filterBar, sort }: CollectionTabProps<T>) {
+export function CollectionTab<T extends Item>({ col, title, singular, description, items, fields, render, banner, filterBar, sort }: CollectionTabProps<T>) {
   const [editing, setEditing] = useState<T | 'new' | null>(null);
   const [values, setValuesState] = useState<Values>({});
   const [search, setSearch] = useState('');
@@ -170,7 +172,16 @@ export function CollectionTab<T extends { id: string }>({ col, title, singular, 
     success: `${singular} saved`,
     onSuccess: () => setEditing(null),
   });
-  const remove = useAction((id: string) => api.deleteItem(col, id), { invalidate: inv, success: `${singular} deleted` });
+  const remove = useAction((id: string) => api.deleteItem(col, id), { invalidate: [...inv, ['checklist']], success: `${singular} deleted` });
+  const review = useAction(
+    ({ id, action }: { id: string; action: 'APPROVE' | 'REJECT' }) => api.reviewItems({ items: [{ collection: col, id, action }] }),
+    {
+      invalidate: [...inv, ['checklist']],
+      success: (r) => (r.approved ? `${singular} approved` : `${singular} rejected`),
+    },
+  );
+  const reviewing = (id: string, action: 'APPROVE' | 'REJECT') => review.isPending && review.variables?.id === id && review.variables.action === action;
+  const drafts = items.filter((i) => i.status === 'DRAFT').length;
 
   const open = (item: T | 'new') => {
     setValuesState(toFormValues(fields, item === 'new' ? null : (item as unknown as Values)));
@@ -188,6 +199,8 @@ export function CollectionTab<T extends { id: string }>({ col, title, singular, 
   const shown = useMemo(() => {
     let xs = [...items];
     if (sort) xs.sort(sort);
+    // Drafts first so they're reviewed (stable sort keeps the order within each group).
+    xs.sort((a, b) => Number(b.status === 'DRAFT') - Number(a.status === 'DRAFT'));
     if (predicate) xs = xs.filter(predicate);
     const s = search.trim().toLowerCase();
     if (s) xs = xs.filter((x) => JSON.stringify(x).toLowerCase().includes(s));
@@ -201,6 +214,11 @@ export function CollectionTab<T extends { id: string }>({ col, title, singular, 
         <div>
           <h2 className="text-base font-semibold">
             {title} <span className="ml-1 text-sm font-normal text-subtle">{items.length}</span>
+            {drafts > 0 && (
+              <Badge tone="amber" className="ml-2 align-middle">
+                {drafts} draft{drafts === 1 ? '' : 's'}
+              </Badge>
+            )}
           </h2>
           {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
         </div>
@@ -224,10 +242,48 @@ export function CollectionTab<T extends { id: string }>({ col, title, singular, 
           </EmptyState>
         ) : (
           <ul className="divide-y divide-line">
-            {shown.map((item) => (
-              <li key={item.id} className="group flex items-start gap-3 px-4 py-3.5">
-                <div className="min-w-0 flex-1">{render(item)}</div>
-                <div className="flex shrink-0 items-center gap-1 opacity-100 transition sm:opacity-60 sm:group-hover:opacity-100">
+            {shown.map((item) => {
+              const draft = item.status === 'DRAFT';
+              return (
+              <li
+                key={item.id}
+                className={cx('group flex flex-wrap items-start gap-3 px-4 py-3.5 sm:flex-nowrap', draft && 'border-l-2 border-l-amber-500 bg-amber-500/5')}
+              >
+                <div className="min-w-0 flex-1">
+                  {draft && (
+                    <div className="mb-1.5" title="Imported from your CV — the agent won't use this until you approve it">
+                      <Badge tone="amber">Draft</Badge>
+                    </div>
+                  )}
+                  {render(item)}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {draft && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={<Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />}
+                        loading={reviewing(item.id, 'APPROVE')}
+                        disabled={review.isPending}
+                        onClick={() => review.mutate({ id: item.id, action: 'APPROVE' })}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<X className="size-3.5" />}
+                        title="Reject — deletes this draft"
+                        loading={reviewing(item.id, 'REJECT')}
+                        disabled={review.isPending}
+                        onClick={() => review.mutate({ id: item.id, action: 'REJECT' })}
+                      >
+                        Reject
+                      </Button>
+                    </>
+                  )}
+                <div className="flex items-center gap-1 opacity-100 transition sm:opacity-60 sm:group-hover:opacity-100">
                   <Button size="sm" variant="ghost" aria-label="Edit" onClick={() => open(item)}>
                     <Pencil className="size-3.5" />
                   </Button>
@@ -244,8 +300,10 @@ export function CollectionTab<T extends { id: string }>({ col, title, singular, 
                     <Trash2 className="size-3.5" />
                   </ConfirmButton>
                 </div>
+                </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </Card>

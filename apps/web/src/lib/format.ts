@@ -77,3 +77,23 @@ export function pct(score: number | null | undefined): string {
   if (score == null) return '—';
   return `${Math.round(score)}`;
 }
+
+/** Whole pounds, e.g. 1234.5 → "£1,235". */
+export function fmtGBP(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return `£${Math.round(n).toLocaleString('en-GB')}`;
+}
+
+/** Read a File as base64 (no data: prefix). */
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(r.error ?? new Error('Could not read file'));
+    r.onload = () => {
+      const s = String(r.result ?? '');
+      const i = s.indexOf(',');
+      resolve(i >= 0 ? s.slice(i + 1) : s);
+    };
+    r.readAsDataURL(file);
+  });
+}
