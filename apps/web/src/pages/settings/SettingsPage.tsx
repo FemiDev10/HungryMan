@@ -6,8 +6,9 @@ import { ErrorBox, LoadingBlock, PageHeader } from '../../components/ui';
 import { GeneralSettings } from './GeneralSettings';
 import { SourcesSettings } from './SourcesSettings';
 import { PrivacySettings } from './PrivacySettings';
+import { SponsorsSettings } from './SponsorsSettings';
 
-type TabId = 'agent' | 'sources' | 'privacy';
+type TabId = 'agent' | 'sources' | 'sponsors' | 'privacy';
 
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
@@ -23,6 +24,7 @@ export function SettingsPage() {
         tabs={[
           { id: 'agent', label: 'Agent & schedule' },
           { id: 'sources', label: 'Sources' },
+          { id: 'sponsors', label: 'Sponsor register' },
           { id: 'privacy', label: 'Privacy' },
         ]}
       />
@@ -35,6 +37,7 @@ export function SettingsPage() {
           <GeneralSettings key={settings.data.updatedAt ?? 'settings'} s={settings.data} />
         ))}
       {tab === 'sources' && <SourcesSettings />}
+      {tab === 'sponsors' && <SponsorsSettings />}
       {tab === 'privacy' && <PrivacySettings />}
     </>
   );

@@ -68,8 +68,10 @@ export function GeneralSettings({ s }: { s: Settings }) {
         timezone: f.timezone,
         searchCriteria: f.searchCriteria,
         termTimeOverride: f.termTimeOverride,
+        reviewFirstN: f.reviewFirstN,
+        monthlyIncomeGoal: f.monthlyIncomeGoal,
       }),
-    { invalidate: [['settings'], ['overview']], success: 'Settings saved' },
+    { invalidate: [['settings'], ['overview'], ['checklist']], success: 'Settings saved' },
   );
 
   const agents = Array.from(new Set([...(meta.data?.integrations.browserAgents ?? []), f.defaultBrowserAgent].filter(Boolean)));
@@ -104,6 +106,23 @@ export function GeneralSettings({ s }: { s: Settings }) {
                 </option>
               ))}
             </Select>
+          </Field>
+          <NumberField
+            label="Warm-up: first N applications stop before submit for your review"
+            value={f.reviewFirstN}
+            onChange={(n) => set('reviewFirstN', n)}
+            max={50}
+            hint="They appear under Exceptions as “Review before submit”. 0 turns warm-up off."
+          />
+          <Field label="Monthly income goal (£)" hint="Target from part-time general work, before tax. Shown on the Overview.">
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={50}
+              value={Number.isFinite(f.monthlyIncomeGoal) ? f.monthlyIncomeGoal : ''}
+              onChange={(e) => set('monthlyIncomeGoal', Number(e.target.value))}
+            />
           </Field>
           <div className="sm:col-span-2 lg:col-span-3">
             <Toggle

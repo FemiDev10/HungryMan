@@ -109,6 +109,7 @@ function ExceptionCard({ r, onResolve, onMark, pending }: {
           warmUp={r.warmUp}
           track={r.track}
           sponsorLicensed={r.job.sponsorLicensed}
+          registerName={r.job.sponsorMatchName}
           estMonthlyPay={r.job.estMonthlyPay}
         />
         <span className="font-mono text-[11px] text-subtle">{r.ref}</span>

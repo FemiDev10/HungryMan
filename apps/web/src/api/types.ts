@@ -58,6 +58,7 @@ export interface ApplicationRow {
     eligibility: Eligibility | null;
     estMonthlyPay: number | null;
     sponsorLicensed: boolean | null;
+    sponsorMatchName?: string | null;
   };
   cvProfile: { id: string; name: string; slug: string } | null;
   cvFileName: string | null;

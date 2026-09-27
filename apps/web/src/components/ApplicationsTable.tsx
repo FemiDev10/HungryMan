@@ -32,6 +32,7 @@ function JobCell({ r }: { r: ApplicationRow }) {
           warmUp={r.warmUp}
           track={r.track}
           sponsorLicensed={r.job.sponsorLicensed}
+          registerName={r.job.sponsorMatchName}
           estMonthlyPay={r.job.estMonthlyPay}
         />
       </div>
@@ -109,6 +110,7 @@ export function ApplicationsTable({ rows, emptyTitle = 'Nothing here yet', empty
                   warmUp={r.warmUp}
                   track={r.track}
                   sponsorLicensed={r.job.sponsorLicensed}
+          registerName={r.job.sponsorMatchName}
                   estMonthlyPay={r.job.estMonthlyPay}
                 />
               </div>

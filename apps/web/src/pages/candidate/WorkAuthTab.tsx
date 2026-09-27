@@ -19,6 +19,8 @@ interface Form {
   visaExpiry: string;
   vacationPeriods: VacationPeriod[];
   knownRestrictions: string[];
+  seekingSponsoredRoleAfterCourse: boolean;
+  sponsoredRoleMinSalary: string;
   guidanceVerifiedAt: string;
   notes: string;
 }
@@ -36,6 +38,8 @@ function fromWA(w: WorkAuthorisation | null | undefined): Form {
     visaExpiry: toDateInput(w?.visaExpiry),
     vacationPeriods: (w?.vacationPeriods ?? []).map((p) => ({ label: p.label ?? '', start: toDateInput(p.start), end: toDateInput(p.end) })),
     knownRestrictions: w?.knownRestrictions ?? [],
+    seekingSponsoredRoleAfterCourse: w?.seekingSponsoredRoleAfterCourse ?? false,
+    sponsoredRoleMinSalary: w?.sponsoredRoleMinSalary != null ? String(w.sponsoredRoleMinSalary) : '',
     guidanceVerifiedAt: toDateInput(w?.guidanceVerifiedAt),
     notes: w?.notes ?? '',
   };
@@ -63,10 +67,12 @@ export function WorkAuthTab({ wa }: { wa: WorkAuthorisation | null | undefined }
         visaExpiry: f.visaExpiry || null,
         vacationPeriods: f.vacationPeriods.filter((p) => p.start && p.end).map((p) => ({ ...p, label: p.label.trim() })),
         knownRestrictions: f.knownRestrictions,
+        seekingSponsoredRoleAfterCourse: f.seekingSponsoredRoleAfterCourse,
+        sponsoredRoleMinSalary: numOrNull(f.sponsoredRoleMinSalary),
         guidanceVerifiedAt: f.guidanceVerifiedAt || null,
         notes: nullIfEmpty(f.notes),
       }),
-    { invalidate: [['candidate']], success: 'Work authorisation saved' },
+    { invalidate: [['candidate'], ['checklist']], success: 'Work authorisation saved' },
   );
 
   const stale = !f.guidanceVerifiedAt || Date.now() - new Date(f.guidanceVerifiedAt).getTime() > 1000 * 60 * 60 * 24 * 180;
@@ -126,7 +132,7 @@ export function WorkAuthTab({ wa }: { wa: WorkAuthorisation | null | undefined }
           <Field label="Course start">
             <input className="input" type="date" value={f.courseStart} onChange={(e) => set('courseStart', e.target.value)} />
           </Field>
-          <Field label="Course end">
+          <Field label="Course end" hint="Full-time applications will say you can start after this date.">
             <input className="input" type="date" value={f.courseEnd} onChange={(e) => set('courseEnd', e.target.value)} />
           </Field>
           <Field label="Term-time weekly hours limit" hint="Leave blank if no limit applies.">
@@ -149,6 +155,53 @@ export function WorkAuthTab({ wa }: { wa: WorkAuthorisation | null | undefined }
               onChange={(v) => set('knownRestrictions', v)}
               placeholder="No self-employment, No professional sportsperson…"
               suggestions={['No self-employment', 'No permanent full-time role before course end', 'No work as a professional sportsperson', 'No work as an entertainer']}
+            />
+          </Field>
+        </div>
+      </Card>
+
+      <Card title="After your course" subtitle="Student → Skilled Worker route">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Toggle
+              checked={f.seekingSponsoredRoleAfterCourse}
+              onChange={(v) => set('seekingSponsoredRoleAfterCourse', v)}
+              label="I'm applying for full-time roles that start after my course ends, with Skilled Worker sponsorship"
+              description="Full-time professional roles are then treated as starting after your course end date and need an employer that can sponsor. When off, they're checked against your term-time hours limit."
+            />
+          </div>
+          {f.seekingSponsoredRoleAfterCourse && !f.courseEnd && (
+            <Callout tone="amber" className="sm:col-span-2">
+              Set your course end date above — it's the earliest start date the agent will give employers.
+            </Callout>
+          )}
+          <Field
+            label="Minimum salary for sponsored roles (£/year)"
+            className="sm:col-span-2"
+            hint={
+              <>
+                Check the current Skilled Worker salary rules on{' '}
+                <a
+                  className="inline-flex items-center gap-0.5 underline underline-offset-2"
+                  href="https://www.gov.uk/skilled-worker-visa/your-job"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  gov.uk <ExternalLink className="size-3" />
+                </a>{' '}
+                (new-entrant rates can apply when switching from a Student visa). Leave blank to skip this check.
+              </>
+            }
+          >
+            <input
+              className="input max-w-xs"
+              type="number"
+              min={0}
+              step={100}
+              disabled={!f.seekingSponsoredRoleAfterCourse}
+              value={f.sponsoredRoleMinSalary}
+              onChange={(e) => set('sponsoredRoleMinSalary', e.target.value)}
+              placeholder="e.g. 30000"
             />
           </Field>
         </div>

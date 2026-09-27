@@ -208,7 +208,9 @@ function rank(i: ChecklistItem) {
 
 function SetupChecklist({ data }: { data: Checklist }) {
   const [expanded, setExpanded] = useState(false);
-  const items = [...data.items].sort((a, b) => rank(a) - rank(b));
+  const [showDone, setShowDone] = useState(false);
+  const sorted = [...data.items].sort((a, b) => rank(a) - rank(b));
+  const items = data.ready || showDone ? sorted : sorted.filter((i) => !i.done);
   const doneCount = data.items.filter((i) => i.done).length;
   const requiredLeft = data.items.filter((i) => i.required && !i.done).length;
 
@@ -254,6 +256,16 @@ function SetupChecklist({ data }: { data: Checklist }) {
           </li>
         ))}
       </ul>
+      {!data.ready && doneCount > 0 && (
+        <button
+          type="button"
+          className="flex w-full items-center justify-center gap-1 border-t border-line py-2 text-xs font-medium text-muted hover:bg-surface-2 hover:text-fg"
+          onClick={() => setShowDone((v) => !v)}
+        >
+          {showDone ? 'Hide completed' : `Show ${doneCount} completed`}
+          <ChevronDown className={cx('size-3 transition', showDone && 'rotate-180')} />
+        </button>
+      )}
     </Card>
   );
 }
