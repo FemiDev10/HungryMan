@@ -1,0 +1,16 @@
+{
+  "name": "hungryman",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Private autonomous job-search and job-application operating system",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/api & npm run dev --workspace apps/web",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspace apps/api",
+    "typecheck": "npm run typecheck --workspaces",
+    "db:migrate": "npm run db:migrate --workspace apps/api",
+    "db:seed": "npm run db:seed --workspace apps/api"
+  },
+  "engines": { "node": ">=20" }
+}

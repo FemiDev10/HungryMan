@@ -1,0 +1,553 @@
+// HungryMan — autonomous job application agent
+// The candidate database (not any CV) is the source of truth.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── Enums ───────────────────────────────
+
+enum Track {
+  PROFESSIONAL
+  GENERAL
+}
+
+enum JobCategory {
+  PRODUCT_DESIGN
+  UX
+  UX_RESEARCH
+  PRODUCT_MANAGEMENT
+  FRONTEND
+  SOFTWARE
+  AI
+  TECH_GENERAL
+  HOSPITALITY
+  KITCHEN_PORTER
+  CLEANING
+  SECURITY
+  RETAIL
+  WAREHOUSE
+  GENERAL_ENTRY_LEVEL
+  OTHER
+}
+
+enum Eligibility {
+  ELIGIBLE
+  POTENTIALLY_ELIGIBLE
+  REQUIRES_REVIEW
+  NOT_ELIGIBLE
+  UNKNOWN
+}
+
+enum RemoteType {
+  REMOTE
+  HYBRID
+  ONSITE
+  UNKNOWN
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  TEMPORARY
+  INTERNSHIP
+  ZERO_HOURS
+  UNKNOWN
+}
+
+enum ApplicationStatus {
+  DISCOVERED
+  DEDUPLICATED
+  CLASSIFIED
+  ELIGIBILITY_CHECKED
+  MATCHED
+  QUEUED
+  CV_GENERATING
+  CV_VALIDATED
+  APPLICATION_PREPARING
+  READY_FOR_BROWSER
+  BROWSER_EXECUTING
+  SUBMISSION_ATTEMPTED
+  SUBMITTED
+  SKIPPED
+  REJECTED_BY_RULE
+  NEEDS_HUMAN
+  BLOCKED
+  FAILED
+  EXPIRED
+  DUPLICATE
+}
+
+enum ExceptionType {
+  CAPTCHA
+  VIDEO_QUESTION
+  LIVE_INTERVIEW
+  UNSUPPORTED_FIELD
+  MISSING_CANDIDATE_DATA
+  IDENTITY_VERIFICATION
+  APPLICATION_REQUIRES_SIGNATURE
+  AUTOMATION_BLOCKED
+  UNEXPECTED_QUESTION
+  PAYMENT_REQUIRED
+  DUPLICATE_APPLICATION
+  SITE_ERROR
+  LOGIN_REQUIRED
+  CV_VALIDATION_FAILED
+}
+
+enum Outcome {
+  NONE
+  REJECTED
+  ASSESSMENT
+  INTERVIEW
+  OFFER
+  WITHDRAWN
+}
+
+enum EvidenceKind {
+  SKILL
+  EXPERIENCE
+  ACHIEVEMENT
+  EDUCATION
+  PROJECT
+  CERTIFICATION
+  TRAIT
+  AVAILABILITY
+  OTHER
+}
+
+enum DocumentKind {
+  CV
+  COVER_LETTER
+  SUPPORTING
+}
+
+enum BrowserTaskStatus {
+  PENDING
+  CLAIMED
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+enum AgentState {
+  RUNNING
+  PAUSED
+  STOPPED
+}
+
+// ───────────────────────── Candidate profile ─────────────────────────
+
+model Candidate {
+  id              String    @id @default(cuid())
+  fullName        String
+  email           String?
+  phone           String?
+  headline        String?
+  addressLine     String?
+  city            String?
+  postcode        String?
+  country         String?   @default("United Kingdom")
+  willingToRelocate Boolean @default(false)
+  maxCommuteMinutes Int?
+  links           Json      @default("[]") // [{label,url}] portfolio + professional profiles
+  availability    Json      @default("{}") // {startDate, noticePeriod, daysAvailable[], shiftsAvailable[], notes}
+  preferences     Json      @default("{}") // {minSalaryProfessional, minHourlyGeneral, remoteTypes[], locations[], excludedCompanies[]}
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workAuthorisation WorkAuthorisation?
+  education       Education[]
+  employment      Employment[]
+  projects        Project[]
+  skills          Skill[]
+  certifications  Certification[]
+  evidence        Evidence[]
+}
+
+model WorkAuthorisation {
+  id                    String    @id @default(cuid())
+  candidateId           String    @unique
+  candidate             Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  visaType              String    // e.g. "Student", "Graduate", "Skilled Worker", "British citizen", "Settled status"
+  hasRightToWork        Boolean   @default(true)
+  termTimeHoursLimit    Int?      // weekly hours cap during term time (configurable, verify with official guidance)
+  vacationWorkAllowed   Boolean   @default(true)
+  fullTimeRestrictions  String?   // free-text description of restrictions on permanent full-time roles
+  sponsorshipRequired   Boolean   @default(false)
+  courseStart           DateTime?
+  courseEnd             DateTime?
+  visaExpiry            DateTime?
+  vacationPeriods       Json      @default("[]") // [{start, end, label}] official university vacation dates
+  knownRestrictions     String[]  @default([]) // e.g. "No self-employment", "No permanent full-time role before course end"
+  guidanceVerifiedAt    DateTime? // when the user last checked these rules against official UK guidance
+  notes                 String?
+  updatedAt             DateTime  @updatedAt
+}
+
+model Education {
+  id           String    @id @default(cuid())
+  candidateId  String
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  institution  String
+  qualification String
+  field        String?
+  grade        String?
+  startDate    DateTime?
+  endDate      DateTime?
+  inProgress   Boolean   @default(false)
+  location     String?
+  highlights   String[]  @default([])
+  sortOrder    Int       @default(0)
+}
+
+model Employment {
+  id           String    @id @default(cuid())
+  candidateId  String
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  employer     String
+  title        String
+  location     String?
+  startDate    DateTime?
+  endDate      DateTime?
+  current      Boolean   @default(false)
+  employmentType EmploymentType @default(UNKNOWN)
+  description  String?
+  tags         String[]  @default([]) // e.g. "fintech", "saas", "hospitality", "customer-facing"
+  categories   JobCategory[] @default([]) // job categories this experience is genuinely relevant to
+  sortOrder    Int       @default(0)
+  evidence     Evidence[]
+}
+
+model Project {
+  id           String    @id @default(cuid())
+  candidateId  String
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  name         String
+  role         String?
+  url          String?
+  description  String?
+  startDate    DateTime?
+  endDate      DateTime?
+  shipped      Boolean   @default(false)
+  tags         String[]  @default([])
+  categories   JobCategory[] @default([])
+  sortOrder    Int       @default(0)
+  evidence     Evidence[]
+}
+
+model Skill {
+  id           String    @id @default(cuid())
+  candidateId  String
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  name         String
+  aliases      String[]  @default([])
+  level        String?   // e.g. "Advanced", "Working knowledge"
+  years        Float?
+  categories   JobCategory[] @default([])
+  evidenceId   String?   // optional supporting evidence
+
+  @@unique([candidateId, name])
+}
+
+model Certification {
+  id           String    @id @default(cuid())
+  candidateId  String
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  name         String
+  issuer       String?
+  issuedAt     DateTime?
+  expiresAt    DateTime?
+  credentialId String?
+  url          String?
+  categories   JobCategory[] @default([])
+}
+
+/// Atomic, traceable factual claim. Every CV bullet / answer must cite evidence.
+model Evidence {
+  id                    String       @id @default(cuid())
+  candidateId           String
+  candidate             Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  kind                  EvidenceKind
+  claim                 String       // exact wording that may appear in a CV
+  source                String       // where this is proven: "Payslip", "Portfolio case study", "Reference from X"
+  date                  DateTime?
+  allowedForCV          Boolean      @default(true)
+  allowedForApplication Boolean      @default(true)
+  categories            JobCategory[] @default([]) // categories this claim is relevant to (empty = all)
+  tags                  String[]     @default([])
+  employmentId          String?
+  employment            Employment?  @relation(fields: [employmentId], references: [id], onDelete: SetNull)
+  projectId             String?
+  project               Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+}
+
+// ──────────────────────────── CV profiles ────────────────────────────
+
+model CvProfile {
+  id                    String        @id @default(cuid())
+  slug                  String        @unique
+  name                  String
+  track                 Track
+  categories            JobCategory[] // job categories this profile serves
+  targetJobTitles       String[]      @default([])
+  targetKeywords        String[]      @default([])
+  preferredSkills       String[]      @default([])
+  preferredExperience   String[]      @default([]) // tags to prioritise
+  excludedExperience    String[]      @default([]) // tags to leave out
+  summaryTemplate       String        // may only reference {placeholders} filled from evidence
+  skillOrdering         String[]      @default([])
+  experienceOrdering    String        @default("RELEVANCE") // RELEVANCE | CHRONOLOGICAL
+  projectSelectionRules Json          @default("{}") // {maxProjects, requireShipped, requiredTags[]}
+  maximumPages          Int           @default(2)
+  template              String        @default("classic") // classic | compact
+  includeCoverLetter    String        @default("WHEN_REQUIRED") // ALWAYS | WHEN_REQUIRED | NEVER
+  active                Boolean       @default(true)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  applications          Application[]
+  documents             Document[]
+}
+
+// ─────────────────────────────── Jobs ────────────────────────────────
+
+model Job {
+  id                    String         @id @default(cuid())
+  source                String
+  sourceJobId           String?
+  url                   String
+  title                 String
+  company               String
+  location              String?
+  remoteType            RemoteType     @default(UNKNOWN)
+  description           String
+  requirements          String[]       @default([])
+  preferredRequirements String[]       @default([])
+  salaryMin             Float?
+  salaryMax             Float?
+  salaryText            String?
+  salaryPeriod          String?        // YEAR | MONTH | WEEK | DAY | HOUR
+  currency              String?        @default("GBP")
+  employmentType        EmploymentType @default(UNKNOWN)
+  hoursPerWeek          Float?
+  hoursText             String?
+  sponsorshipMention    String?        // NONE | OFFERED | NOT_OFFERED | UNCLEAR
+  sponsorshipEvidence   String?
+  postedAt              DateTime?
+  closingDate           DateTime?
+  applicationMethod     String?        // EXTERNAL_URL | EASY_APPLY | EMAIL | UNKNOWN
+  discoveredAt          DateTime       @default(now())
+  rawData               Json?
+  dedupeKey             String
+  duplicateOfId         String?
+
+  // analysis
+  category              JobCategory?
+  classification        Json?          // JobClassification
+  eligibility           Eligibility?
+  eligibilityDetails    Json?          // {reasons[], checks[]}
+  match                 Json?          // MatchResult
+  matchScore            Float?
+  analysisVersion       String?
+
+  application           Application?
+
+  @@unique([source, sourceJobId])
+  @@index([dedupeKey])
+  @@index([discoveredAt])
+}
+
+// ─────────────────────────── Applications ────────────────────────────
+
+model Application {
+  id                      String            @id @default(cuid())
+  seq                     Int               @unique @default(autoincrement()) // APP-00182
+  jobId                   String            @unique
+  job                     Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  track                   Track?
+  cvProfileId             String?
+  cvProfile               CvProfile?        @relation(fields: [cvProfileId], references: [id])
+  cvVersionId             String?
+  coverLetterVersionId    String?
+  answersVersionId        String?
+  status                  ApplicationStatus @default(DISCOVERED)
+  currentStep             String?
+  lastAction              String?
+  priority                Float             @default(0)
+  queuedAt                DateTime?
+  submissionEvidence      Json?             // {type, confirmationNumber, message, screenshotDocId, url}
+  submittedAt             DateTime?
+  simulated               Boolean           @default(false) // true when produced by the mock browser agent
+  failureReason           String?
+  exceptionType           ExceptionType?
+  humanInterventionReason String?
+  browserAgent            String?
+  browserState            Json?             // last step reached, fields filled etc.
+  attempts                Int               @default(0)
+  outcome                 Outcome           @default(NONE)
+  outcomeAt               DateTime?
+  notes                   String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  documents               Document[]
+  answerSets              AnswerSet[]
+  browserTasks            BrowserTask[]
+  auditLogs               AuditLog[]
+
+  @@index([status])
+  @@index([updatedAt])
+}
+
+/// Immutable, versioned generated artifact (CV / cover letter). Never overwritten.
+model Document {
+  id             String       @id @default(cuid())
+  kind           DocumentKind
+  applicationId  String?
+  application    Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  cvProfileId    String?
+  cvProfile      CvProfile?   @relation(fields: [cvProfileId], references: [id])
+  fileName       String       @unique
+  storageKey     String       @unique
+  mimeType       String       @default("application/pdf")
+  sha256         String
+  sizeBytes      Int
+  content        Json         // structured content with evidence ids for every claim
+  validation     Json         // ClaimValidationReport
+  generator      String       // "claude" | "deterministic"
+  promptVersion  String?
+  createdAt      DateTime     @default(now())
+}
+
+/// Versioned set of application answers used for one application.
+model AnswerSet {
+  id             String      @id @default(cuid())
+  applicationId  String
+  application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  version        Int
+  answers        Json        // [{key, question, answer, evidenceIds[], source}]
+  promptVersion  String?
+  createdAt      DateTime    @default(now())
+
+  @@unique([applicationId, version])
+}
+
+/// Verified answer library. Unknown => "UNKNOWN", never guessed.
+model AnswerTemplate {
+  id           String   @id @default(cuid())
+  key          String   @unique // e.g. "right_to_work_uk", "notice_period"
+  category     String   // WORK_AUTHORISATION | LOCATION | AVAILABILITY | EDUCATION | EXPERIENCE | SKILLS | SALARY | NOTICE | PORTFOLIO | MOTIVATION | BEHAVIOURAL | TECHNICAL
+  question     String
+  patterns     String[] @default([]) // lowercase phrases used to match form questions
+  answer       String   // "UNKNOWN" when not provided
+  track        Track?   // null = both tracks
+  evidenceIds  String[] @default([])
+  verified     Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
+}
+
+// ─────────────────────────── Browser tasks ───────────────────────────
+
+model BrowserTask {
+  id             String            @id @default(cuid())
+  applicationId  String
+  application    Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  agentType      String            // cowork | claude-chrome | mock
+  payload        Json
+  status         BrowserTaskStatus @default(PENDING)
+  claimedAt      DateTime?
+  leaseExpiresAt DateTime?
+  completedAt    DateTime?
+  result         Json?
+  createdAt      DateTime          @default(now())
+
+  @@index([status, agentType])
+}
+
+// ─────────────────────────── Configuration ───────────────────────────
+
+model Settings {
+  id                        Int        @id @default(1)
+  agentState                AgentState @default(PAUSED)
+  professionalPerDay        Int        @default(10)
+  generalPerDay             Int        @default(10)
+  maxPerDay                 Int        @default(20)
+  minMatchProfessional      Float      @default(55)
+  minMatchGeneral           Float      @default(45)
+  autoSubmit                Boolean    @default(true)
+  defaultBrowserAgent       String     @default("cowork")
+  schedule                  Json       @default("[]") // [{time:"08:00", action:"DISCOVER"}]
+  timezone                  String     @default("Europe/London")
+  searchCriteria            Json       @default("{}") // {professional:{keywords[],locations[],remote}, general:{...}}
+  termTimeOverride          String?    // null | TERM | VACATION
+  notifyChannels            Json       @default("{\"inApp\":true}")
+  updatedAt                 DateTime   @updatedAt
+}
+
+model SourceConfig {
+  id                     String    @id @default(cuid())
+  source                 String    @unique
+  enabled                Boolean   @default(false)
+  maxApplicationsPerHour Int       @default(5)
+  maxApplicationsPerDay  Int       @default(20)
+  cooldownSeconds        Int       @default(60)
+  maxResultsPerSearch    Int       @default(50)
+  config                 Json      @default("{}") // non-secret config e.g. greenhouse board tokens
+  lastRunAt              DateTime?
+  lastError              String?
+  updatedAt              DateTime  @updatedAt
+}
+
+/// Singleton live status of the agent for the dashboard.
+model AgentStatus {
+  id               Int       @id @default(1)
+  running          Boolean   @default(false)
+  currentTask      String?
+  currentApplicationId String?
+  currentSource    String?
+  currentStep      String?
+  startedAt        DateTime?
+  stepStartedAt    DateTime?
+  queuePosition    Int?
+  queueTotal       Int?
+  lastRunSummary   Json?
+  lastHeartbeat    DateTime?
+  consecutiveFailures Int    @default(0)
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  at             DateTime     @default(now())
+  type           String       // JOB_DISCOVERED, CV_GENERATED, ...
+  actor          String       @default("system") // system | user | agent:<type>
+  applicationId  String?
+  application    Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  jobId          String?
+  message        String
+  data           Json?
+
+  @@index([at])
+  @@index([applicationId])
+  @@index([type])
+}
+
+model Notification {
+  id            String   @id @default(cuid())
+  type          String   // APPLICATION_SUBMITTED | HUMAN_REQUIRED | INTERVIEW | OFFER | AGENT_FAILURE | DAILY_SUMMARY
+  title         String
+  body          String
+  applicationId String?
+  read          Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([read, createdAt])
+}
