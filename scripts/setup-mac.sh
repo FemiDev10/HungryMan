@@ -9,25 +9,36 @@ cd "$(dirname "$0")/.."
 say() { printf '\n\033[1;34m==>\033[0m %s\n' "$1"; }
 die() { printf '\n\033[1;31mError:\033[0m %s\n' "$1"; exit 1; }
 
-# 1. Homebrew (the Mac package manager) — asks for your Mac password the first time.
-if ! command -v brew >/dev/null 2>&1; then
-  say "Installing Homebrew (you'll be asked for your Mac password)"
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  [ -x /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
-  [ -x /usr/local/bin/brew ] && eval "$(/usr/local/bin/brew shellenv)"
+# 1–2. Node.js 22+ and PostgreSQL.
+# Prefers the normal Mac installers (nodejs.org .pkg and Postgres.app), which work on Intel and
+# Apple Silicon. Homebrew is only used as a fallback — it no longer fully supports Intel Macs.
+PGAPP_BIN="/Applications/Postgres.app/Contents/Versions/latest/bin"
+[ -d "$PGAPP_BIN" ] && export PATH="$PGAPP_BIN:$PATH"
+
+node_ok() { command -v node >/dev/null 2>&1 && node -v | grep -qE '^v(2[2-9]|[3-9][0-9])'; }
+if ! node_ok; then
+  if command -v brew >/dev/null 2>&1 && [ "$(uname -m)" = "arm64" ]; then
+    say "Installing Node.js 22 with Homebrew"
+    brew install node@22 && export PATH="$(brew --prefix node@22)/bin:$PATH"
+  fi
+fi
+node_ok || die "Node.js 22 or newer is needed. Download the macOS Installer (.pkg) for Node.js 22 LTS from https://nodejs.org, install it, then run this script again."
+say "Using Node.js $(node -v)"
+
+if ! command -v pg_isready >/dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1 && [ "$(uname -m)" = "arm64" ]; then
+    say "Installing PostgreSQL with Homebrew"
+    brew install postgresql@16 && export PATH="$(brew --prefix postgresql@16)/bin:$PATH"
+    brew services start postgresql@16 >/dev/null
+  else
+    die "PostgreSQL is needed. Download Postgres.app from https://postgresapp.com, drag it to Applications, open it, click Initialize, then run this script again."
+  fi
 fi
 
-# 2. Node.js 22 and PostgreSQL 16
-say "Installing Node.js 22 and PostgreSQL (skipped if already installed)"
-brew list node@22 >/dev/null 2>&1 || brew install node@22
-brew list postgresql@16 >/dev/null 2>&1 || brew install postgresql@16
-export PATH="$(brew --prefix node@22)/bin:$(brew --prefix postgresql@16)/bin:$PATH"
-node -v | grep -q '^v2[2-9]' || die "Node.js 22+ is needed (found $(node -v))."
-
-say "Starting PostgreSQL"
-brew services start postgresql@16 >/dev/null
-for _ in $(seq 1 20); do pg_isready -q && break; sleep 1; done
-pg_isready -q || die "PostgreSQL did not start. Try: brew services restart postgresql@16"
+say "Checking PostgreSQL is running"
+if ! pg_isready -q && [ -d /Applications/Postgres.app ]; then open -a Postgres; fi
+for _ in $(seq 1 30); do pg_isready -q && break; sleep 1; done
+pg_isready -q || die "PostgreSQL isn't running. Open Postgres.app and click Start (or Initialize), then run this script again."
 createdb hungryman 2>/dev/null || true
 
 # 3. Settings file with fresh secrets (only if you don't have one yet)
