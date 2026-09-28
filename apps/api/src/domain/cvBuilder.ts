@@ -196,6 +196,10 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
     ? plan.summary
     : deterministicSummary(candidate, profile, job, category, skills, strengths, employment.flatMap((e) => e.bullets));
 
+  // Don't repeat a point in Key strengths that the summary already says.
+  const inSummary = new Set(summary.flatMap((x) => x.refs).filter((r) => r.startsWith('evidence:')).map((r) => r.slice(9)));
+  const strengthsShown = strengths.filter((x) => !inSummary.has(x.evidenceId));
+
   const content: CvContent = {
     schemaVersion: 1,
     profile: { id: profile.id, slug: profile.slug, name: profile.name, track: profile.track, template: profile.template, maximumPages: pages },
@@ -209,7 +213,7 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
       links: profile.track === 'PROFESSIONAL' ? ((candidate.links as LinkItem[]) ?? []).slice(0, 4) : [],
     },
     summary,
-    strengths,
+    strengths: strengthsShown,
     skills,
     // General-work CVs list only roles with relevant points (max 3), so a steward CV doesn't read
     // like a design CV. Omitting roles is fine; nothing is added that isn't in the profile.

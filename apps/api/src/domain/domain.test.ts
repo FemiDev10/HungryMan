@@ -202,7 +202,9 @@ describe('CV builder + claim validation', () => {
     expect(cv.header.headline).toBeNull();
     expect(cv.skills.map((s) => s.name)).not.toContain('Figma');
     expect(cv.experience[0].employer).toBe('Campus Café'); // relevance ordering
-    expect(cv.strengths.map((s) => s.evidenceId)).toContain('ev4');
+    // ev4 leads the summary, so it isn't repeated under Key strengths
+    expect(cv.summary.flatMap((x) => x.refs)).toContain('evidence:ev4');
+    expect(cv.strengths.map((s) => s.evidenceId)).not.toContain('ev4');
     const designBullets = cv.experience.find((e) => e.employer === 'PayCo')?.bullets ?? [];
     expect(designBullets.map((b) => b.evidenceId)).not.toContain('ev1');
     expect(cv.summary[0].text).toContain('Kitchen Porter');
