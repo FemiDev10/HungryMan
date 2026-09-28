@@ -191,7 +191,9 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
     summary,
     strengths,
     skills,
-    experience: employment.map(({ emp, bullets }) => ({
+    // General-work CVs list only roles with relevant points (max 3), so a steward CV doesn't read
+    // like a design CV. Omitting roles is fine; nothing is added that isn't in the profile.
+    experience: (profile.track === 'GENERAL' ? employment.filter((e) => e.bullets.length > 0).slice(0, 3) : employment).map(({ emp, bullets }) => ({
       employmentId: emp.id,
       title: emp.title,
       employer: emp.employer,
@@ -236,7 +238,9 @@ function deterministicSummary(
   ]
     .filter(Boolean)
     .join(' ');
-  const highlight = strengths[0] ?? bullets[0];
+  // Professional CVs lead with the strongest measurable result; general-work CVs with a transferable strength.
+  const achievement = bullets.find((b) => /\d/.test(b.text)) ?? bullets[0];
+  const highlight = profile.track === 'PROFESSIONAL' ? achievement ?? strengths[0] : strengths[0] ?? bullets[0];
 
   const values: Record<string, { text: string; refs: Ref[] } | null> = {
     headline: candidate.headline ? { text: candidate.headline, refs: ['candidate:headline'] } : null,
