@@ -309,3 +309,10 @@ describe('licence requirements', () => {
     expect(run("Don't have an SIA licence? We will fund your SIA licence training.")).toHaveLength(0);
   });
 });
+
+describe('general-work CVs leave out tech roles', () => {
+  it('shows no design/tech employment on a kitchen porter CV', () => {
+    const cv = buildCvContent({ candidate: fixtureCandidate(), profile: fixtureProfile('kp'), job: fixtureJob({ title: 'Kitchen Porter', description: 'Kitchen hygiene' }), category: 'KITCHEN_PORTER' });
+    expect(cv.experience.map((e) => e.employer)).toEqual(['Campus Café']);
+  });
+});

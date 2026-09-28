@@ -1,5 +1,6 @@
 import type { JobCategory } from '@prisma/client';
 import { hasPhrase, normalize } from './text.js';
+import { PROFESSIONAL_CATEGORIES } from './types.js';
 import type {
   CandidateAvailability,
   CandidateLike,
@@ -109,7 +110,9 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
         emp.categories.includes(category) ||
         emp.categories.some((c) => profile.categories.includes(c)) ||
         emp.tags.some((t) => profile.preferredExperience.includes(t));
-      const excluded = profile.excludedExperience.some((t) => emp.tags.includes(t));
+      // General-work CVs never show tech/design roles: a kitchen porter CV lists only non-tech work.
+      const techRole = emp.categories.length > 0 && emp.categories.every((c) => PROFESSIONAL_CATEGORIES.includes(c));
+      const excluded = profile.excludedExperience.some((t) => emp.tags.includes(t)) || (profile.track === 'GENERAL' && techRole);
       return { emp, bullets, relevant, excluded };
     })
     // Keep the role in history (gaps look worse than an unrelated job), but drop explicitly excluded ones.
@@ -149,6 +152,7 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
   // Strengths: standalone traits / availability / achievements relevant to this category.
   const strengths = cvEvidence
     .filter((e) => !e.employmentId && !e.projectId && ['TRAIT', 'AVAILABILITY', 'ACHIEVEMENT', 'OTHER'].includes(e.kind))
+    .filter((e) => profile.track !== 'GENERAL' || !e.tags.includes('tech'))
     .filter((e) => rank(e) >= 1)
     .sort((a, b) => rank(b) - rank(a))
     .slice(0, profile.track === 'GENERAL' ? 6 : 4)
