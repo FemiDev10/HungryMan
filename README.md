@@ -43,6 +43,16 @@ routes/     REST API (docs/API.md)
 storage/    private file storage, AES-256-GCM at rest
 ```
 
+## Quick start on a Mac (one command)
+
+```bash
+git clone https://github.com/FemiDev10/HungryMan.git && cd HungryMan
+git checkout claude/job-search-project-r0wb04
+bash scripts/setup-mac.sh
+```
+
+It installs Node.js 22 and PostgreSQL through Homebrew, creates the database and `apps/api/.env` with fresh secrets (asking you for a dashboard password), imports `~/oluwafemi-profile.json` or `~/Downloads/oluwafemi-profile.json` if present, and opens the dashboard.
+
 ## Getting started
 
 ```bash

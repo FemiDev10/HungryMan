@@ -14,7 +14,7 @@ const toDate = (s: string | null | undefined) => {
  */
 type ImportData = Omit<CvImport, 'employment' | 'education'> & {
   employment: (CvImport['employment'][number] & { datesText?: string | null; titleVariants?: Record<string, string> })[];
-  education: (CvImport['education'][number] & { datesText?: string | null })[];
+  education: (CvImport['education'][number] & { datesText?: string | null; highlights?: string[] })[];
 };
 
 /** When the source only gave years, show years — never invent months. */
@@ -60,7 +60,7 @@ export async function saveCvImport(candidateId: string, data: ImportData, fileNa
     counts.projects++;
   }
   for (const ed of data.education) {
-    await prisma.education.create({ data: { candidateId, institution: ed.institution, qualification: ed.qualification, field: ed.field, grade: ed.grade, startDate: toDate(ed.startDate), endDate: toDate(ed.endDate), inProgress: ed.inProgress, datesText: ed.datesText ?? yearsOnly(ed.startDate, ed.endDate, false), status: 'DRAFT' } });
+    await prisma.education.create({ data: { candidateId, institution: ed.institution, qualification: ed.qualification, field: ed.field, grade: ed.grade, startDate: toDate(ed.startDate), endDate: toDate(ed.endDate), inProgress: ed.inProgress, highlights: ed.highlights ?? [], datesText: ed.datesText ?? yearsOnly(ed.startDate, ed.endDate, false), status: 'DRAFT' } });
     counts.education++;
   }
   const existingSkills = new Set((await prisma.skill.findMany({ where: { candidateId }, select: { name: true } })).map((s) => s.name.toLowerCase()));
@@ -80,7 +80,7 @@ export async function saveCvImport(candidateId: string, data: ImportData, fileNa
       data: {
         candidateId,
         kind: ev.kind,
-        claim: ev.claim.trim().slice(0, 600),
+        claim: ev.claim.trim().slice(0, 2000),
         source,
         categories: ev.categories,
         tags: ev.tags,

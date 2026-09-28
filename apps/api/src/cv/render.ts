@@ -14,8 +14,15 @@ function toBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   });
 }
 
+/** The built-in PDF fonts only cover Windows-1252; swap the few characters CVs use that fall outside it. */
+function pdfSafe<T>(value: T): T {
+  const map: Record<string, string> = { '\u2192': '->', '\u2190': '<-', '\u2264': '<=', '\u2265': '>=', '\u2713': '-', '\u2248': '~' };
+  return JSON.parse(JSON.stringify(value).replace(/[\u2190\u2192\u2264\u2265\u2713\u2248]/g, (c) => map[c] ?? c));
+}
+
 /** Render structured CV content to a simple ATS-friendly single-column PDF. */
-export async function renderCvPdf(cv: CvContent): Promise<Buffer> {
+export async function renderCvPdf(input: CvContent): Promise<Buffer> {
+  const cv = pdfSafe(input);
   const compact = cv.profile.template === 'compact';
   const doc = new PDFDocument({
     size: 'A4',
@@ -51,7 +58,16 @@ export async function renderCvPdf(cv: CvContent): Promise<Buffer> {
     section('Key strengths');
     cv.strengths.forEach((s) => bullet(s.text));
   }
-  if (cv.skills.length) {
+  if (cv.skillLines?.length) {
+    section('Skills');
+    for (const l of cv.skillLines) {
+      const i = l.text.indexOf(':');
+      if (i > 0 && i < 40) {
+        doc.font('Helvetica-Bold').fontSize(body).fillColor('#111').text(`${l.text.slice(0, i + 1)} `, { width, continued: true });
+        doc.font('Helvetica').fillColor('#222').text(l.text.slice(i + 1).trim(), { paragraphGap: 2 });
+      } else doc.font('Helvetica').fontSize(body).fillColor('#222').text(l.text, { width, paragraphGap: 2 });
+    }
+  } else if (cv.skills.length) {
     section('Skills');
     doc.font('Helvetica').fontSize(body).fillColor('#222').text(cv.skills.map((s) => s.name).join('  ·  '), { width });
   }
@@ -84,12 +100,17 @@ export async function renderCvPdf(cv: CvContent): Promise<Buffer> {
     for (const ed of cv.education) {
       doc.font('Helvetica-Bold').fontSize(body).fillColor('#111').text(`${ed.qualification}${ed.field ? `, ${ed.field}` : ''}${ed.grade ? ` (${ed.grade})` : ''}`);
       doc.font('Helvetica').fontSize(9).fillColor('#555').text(`${ed.institution}  ·  ${ed.datesText ?? `${fmtMonth(ed.start)} – ${ed.inProgress ? `expected ${fmtMonth(ed.end)}` : fmtMonth(ed.end)}`}`);
+      (ed.highlights ?? []).forEach((h) => bullet(h));
       doc.moveDown(0.25);
     }
   }
   if (cv.certifications.length) {
     section('Certifications');
     cv.certifications.forEach((c) => bullet(`${c.name}${c.issuer ? `, ${c.issuer}` : ''}${c.issuedAt ? ` (${fmtMonth(c.issuedAt)})` : ''}`));
+  }
+  if (cv.additional?.length) {
+    section('Additional information');
+    cv.additional.forEach((a) => bullet(a.text));
   }
   return toBuffer(doc);
 }

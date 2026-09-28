@@ -35,6 +35,10 @@ export interface CvContent {
   summary: CvSentence[];
   strengths: CvBullet[];
   skills: { skillId: string; name: string }[];
+  /** Grouped skill lines copied from the candidate's own CV (e.g. "Design: Figma, prototyping…"). */
+  skillLines: CvBullet[];
+  /** UK-style extra section: right to work and availability. */
+  additional: CvSentence[];
   experience: {
     employmentId: string;
     title: string;
@@ -57,6 +61,7 @@ export interface CvContent {
     end: string | null;
     datesText: string | null;
     inProgress: boolean;
+    highlights: string[];
   }[];
   certifications: { certificationId: string; name: string; issuer: string | null; issuedAt: string | null }[];
 }
@@ -97,7 +102,9 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
   const priority = new Map((plan?.evidencePriority ?? []).map((id, i) => [id, 1000 - i]));
   const rank = (e: EvidenceLike) => (priority.get(e.id) ?? 0) + relevance(e, category, profile, jobText);
   const pages = Math.max(1, profile.maximumPages);
-  const bulletsPerRole = profile.track === 'PROFESSIONAL' ? (pages >= 2 ? 5 : 3) : 3;
+  // Professional CVs keep every bullet from the candidate's own CV (up to 6 per role);
+  // general-work CVs show up to 5 on the best-matching role and 4 on the others.
+  const bulletsPerRole = profile.track === 'PROFESSIONAL' ? (pages >= 2 ? 6 : 3) : 5;
   const empById = new Map(candidate.employment.map((e) => [e.id, e]));
   // On a general-work CV, a generic point attached to a tech job only counts if the candidate
   // gave that job a title for this kind of work (e.g. "Customer Service & Product Support").
@@ -113,7 +120,8 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
       const bullets = cvEvidence
         // Negative rank = evidence about a different field (e.g. design work on a kitchen porter CV).
         .filter((e) => e.employmentId === emp.id && bulletRank(e) >= 0)
-        .sort((a, b) => bulletRank(b) - bulletRank(a))
+        // Professional: the candidate's own order. General: most relevant first.
+        .sort((a, b) => (profile.track === 'PROFESSIONAL' ? 0 : bulletRank(b) - bulletRank(a)))
         .slice(0, bulletsPerRole)
         .map((e) => ({ text: e.claim, evidenceId: e.id, score: bulletRank(e) }));
       const relevant =
@@ -135,7 +143,9 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
   const byDate = (a: (typeof employment)[number], b: (typeof employment)[number]) =>
     (b.emp.current ? 1 : 0) - (a.emp.current ? 1 : 0) ||
     new Date(b.emp.startDate ?? 0).getTime() - new Date(a.emp.startDate ?? 0).getTime();
+  const bySortOrder = (a: (typeof employment)[number], b: (typeof employment)[number]) => (a.emp.sortOrder ?? 0) - (b.emp.sortOrder ?? 0);
   if (profile.track === 'GENERAL') employment.sort((a, b) => b.score - a.score || byDate(a, b)); // best match for this vacancy first
+  else if (employment.some((e) => (e.emp.sortOrder ?? 0) !== 0)) employment.sort((a, b) => bySortOrder(a, b) || byDate(a, b)); // the order on the candidate's own CV
   else if (profile.experienceOrdering === 'RELEVANCE') employment.sort((a, b) => Number(b.relevant) - Number(a.relevant) || byDate(a, b));
   else employment.sort(byDate);
 
@@ -150,7 +160,7 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
       s: (p.categories.includes(category) ? 5 : 0) + (p.categories.some((c) => profile.categories.includes(c)) ? 3 : 0) + (p.shipped ? 1 : 0) + p.tags.filter((t) => profile.preferredExperience.includes(t)).length,
     }))
     .filter((x) => x.s >= 3)
-    .sort((a, b) => b.s - a.s)
+    .sort((a, b) => (profile.track === 'PROFESSIONAL' ? (a.p.sortOrder ?? 0) - (b.p.sortOrder ?? 0) : 0) || b.s - a.s)
     .slice(0, maxProjects)
     .map(({ p }) => ({
       projectId: p.id,
@@ -159,7 +169,6 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
       url: p.url ?? null,
       bullets: cvEvidence
         .filter((e) => e.projectId === p.id && rank(e) > -50)
-        .sort((a, b) => rank(b) - rank(a))
         .slice(0, 3)
         .map((e) => ({ text: e.claim, evidenceId: e.id })),
     }));
@@ -168,6 +177,8 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
   const strengths = cvEvidence
     .filter((e) => !e.employmentId && !e.projectId && ['TRAIT', 'AVAILABILITY', 'ACHIEVEMENT', 'OTHER'].includes(e.kind))
     .filter((e) => profile.track !== 'GENERAL' || !e.tags.includes('tech'))
+    // Professional CVs only show strengths explicitly tagged for professional work (no shift availability etc.).
+    .filter((e) => profile.track !== 'PROFESSIONAL' || e.categories.some((c) => PROFESSIONAL_CATEGORIES.includes(c)))
     .filter((e) => !e.tags.includes('summary'))
     .filter((e) => rank(e) >= 1)
     .sort((a, b) => rank(b) - rank(a))
@@ -196,6 +207,13 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
     ? plan.summary
     : deterministicSummary(candidate, profile, job, category, skills, strengths, employment.flatMap((e) => e.bullets));
 
+  const skillLines = cvEvidence
+    .filter((e) => e.kind === 'SKILL' && e.tags.includes('skills-line'))
+    .filter((e) => e.categories.length === 0 || e.categories.includes(category) || e.categories.some((c) => profile.categories.includes(c)))
+    .map((e) => ({ text: e.claim, evidenceId: e.id }));
+
+  const additional = rightToWorkLine(candidate, profile);
+
   // Don't repeat a point in Key strengths that the summary already says.
   const inSummary = new Set(summary.flatMap((x) => x.refs).filter((r) => r.startsWith('evidence:')).map((r) => r.slice(9)));
   const strengthsShown = strengths.filter((x) => !inSummary.has(x.evidenceId));
@@ -215,9 +233,11 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
     summary,
     strengths: strengthsShown,
     skills,
+    skillLines,
+    additional,
     // General-work CVs list only roles with relevant points (max 3), so a steward CV doesn't read
     // like a design CV. Omitting roles is fine; nothing is added that isn't in the profile.
-    experience: (profile.track === 'GENERAL' ? employment.filter((e) => e.bullets.length > 0).slice(0, 3) : employment).map(({ emp, bullets }) => ({
+    experience: (profile.track === 'GENERAL' ? employment.filter((e) => e.bullets.length > 0).slice(0, 4) : employment).map(({ emp, bullets }, i) => ({
       employmentId: emp.id,
       title: titleFor(emp, category, profile),
       employer: emp.employer,
@@ -226,7 +246,7 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
       end: iso(emp.endDate),
       datesText: emp.datesText ?? null,
       current: emp.current,
-      bullets,
+      bullets: profile.track === 'GENERAL' && i > 0 ? bullets.slice(0, 4) : bullets,
     })),
     projects,
     education: candidate.education.map((ed) => ({
@@ -239,6 +259,8 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
       end: iso(ed.endDate),
       datesText: ed.datesText ?? null,
       inProgress: ed.inProgress,
+      // Degree highlights (dissertation, teaching) only where they're relevant: professional and teaching CVs.
+      highlights: profile.track === 'PROFESSIONAL' || category === 'TEACHING_SUPPORT' ? ed.highlights ?? [] : [],
     })),
     certifications: candidate.certifications
       .filter((c) => c.categories.length === 0 || c.categories.includes(category) || c.categories.some((x) => profile.categories.includes(x)))
@@ -303,6 +325,9 @@ function deterministicSummary(
     });
     if (ok && text.trim()) sentences.push({ text: text.replace(/\.\./g, '.').trim(), refs });
   }
+  if (sentences.length === 0 && profile.track === 'PROFESSIONAL' && !profile.summaryTemplate.includes('{headline}')) {
+    return deterministicSummary(candidate, { ...profile, summaryTemplate: '{headline}. Core skills: {topSkills}. {highlight}' }, job, category, skills, strengths, bullets);
+  }
   return sentences;
 }
 
@@ -313,18 +338,21 @@ function joinList(items: string[]): string {
 
 /** Rough line-count model so the document respects maximumPages. */
 export function estimateLines(c: CvContent): number {
-  const wrap = (t: string) => Math.ceil(t.length / 95);
+  const wrap = (t: string) => Math.ceil(t.length / 105);
   let n = 6; // header
   n += 2 + c.summary.reduce((s, x) => s + wrap(x.text), 0);
   if (c.strengths.length) n += 2 + c.strengths.reduce((s, x) => s + wrap(x.text), 0);
-  if (c.skills.length) n += 2 + Math.ceil(c.skills.map((s) => s.name).join(' · ').length / 95);
+  if (c.skillLines?.length) n += 2 + c.skillLines.reduce((s, x) => s + wrap(x.text), 0);
+  else if (c.skills.length) n += 2 + Math.ceil(c.skills.map((s) => s.name).join(' · ').length / 95);
+  n += (c.additional?.length ? 2 : 0) + (c.additional ?? []).reduce((s, x) => s + wrap(x.text), 0);
+  n += c.education.reduce((s, e) => s + (e.highlights ?? []).reduce((t, h) => t + wrap(h), 0), 0);
   for (const e of c.experience) n += 2 + e.bullets.reduce((s, b) => s + wrap(b.text), 0);
   for (const p of c.projects) n += 2 + p.bullets.reduce((s, b) => s + wrap(b.text), 0);
   n += 2 + c.education.length * 2 + (c.certifications.length ? 2 + c.certifications.length : 0);
   return n;
 }
 
-const LINES_PER_PAGE = 52;
+const LINES_PER_PAGE = 60;
 
 function fitToPages(c: CvContent): CvContent {
   const max = c.profile.maximumPages * LINES_PER_PAGE;
@@ -348,4 +376,18 @@ export function titleFor(emp: { title: string; titleVariants?: unknown }, catego
   const variants = (emp.titleVariants && typeof emp.titleVariants === 'object' ? emp.titleVariants : {}) as Record<string, string>;
   for (const c of [category, ...profile.categories]) if (variants[c]) return variants[c];
   return emp.title;
+}
+
+/** "Right to work" line UK employers look for, built only from the configured work authorisation. */
+function rightToWorkLine(c: CandidateLike, profile: CvProfileLike): CvSentence[] {
+  const a = c.workAuthorisation;
+  if (!a) return [];
+  const end = a.courseEnd ? new Date(a.courseEnd).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : null;
+  if (a.termTimeHoursLimit != null && profile.track === 'GENERAL') {
+    return [{ text: `Right to work: UK ${a.visaType} visa, up to ${a.termTimeHoursLimit} hours per week during term time${a.vacationWorkAllowed ? ' and full-time during official university vacations' : ''}.`, refs: ['candidate:rightToWork'] }];
+  }
+  if (a.termTimeHoursLimit != null && a.seekingSponsoredRoleAfterCourse) {
+    return [{ text: `Right to work: currently on a UK ${a.visaType} visa${end ? ` (course ends ${end})` : ''}; available for full-time roles after my course with Skilled Worker visa sponsorship.`, refs: ['candidate:rightToWork'] }];
+  }
+  return a.hasRightToWork ? [{ text: 'Right to work: full right to work in the UK.', refs: ['candidate:rightToWork'] }] : [];
 }

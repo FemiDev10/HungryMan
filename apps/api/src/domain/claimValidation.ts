@@ -46,6 +46,12 @@ function resolveRef(ref: Ref, c: CandidateLike, jobTitle: string | null, purpose
       if (id === 'headline') return c.headline ?? null;
       if (id === 'availability') return JSON.stringify(c.availability ?? {});
       if (id === 'location') return `${c.city ?? ''} ${c.postcode ?? ''} ${c.country ?? ''}`;
+      if (id === 'rightToWork') {
+        const a = c.workAuthorisation;
+        if (!a) return null;
+        const end = a.courseEnd ? new Date(a.courseEnd).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : '';
+        return `${a.visaType} ${a.termTimeHoursLimit ?? ''} hours ${end} ${a.hasRightToWork} ${a.seekingSponsoredRoleAfterCourse ? 'Skilled Worker sponsorship' : ''}`;
+      }
       return null;
     case 'job':
       return id === 'title' && jobTitle ? jobTitle : null;
@@ -111,9 +117,13 @@ export function validateCv(content: CvContent, c: CandidateLike): ClaimValidatio
   if (content.header.name !== c.fullName) errors.push('Header name does not match candidate profile.');
   if (content.header.headline && content.header.headline !== c.headline) errors.push('Headline does not match candidate profile.');
 
-  for (const s of content.summary) {
+  for (const s of [...content.summary, ...(content.additional ?? [])]) {
     checked++;
     errors.push(...validateSentence(s.text, s.refs, c, jobTitle, 'cv'));
+  }
+  for (const b of content.skillLines ?? []) {
+    checked++;
+    checkBullet(b, c, 'Skills', errors);
   }
   for (const b of content.strengths) {
     checked++;
@@ -153,7 +163,7 @@ export function validateCv(content: CvContent, c: CandidateLike): ClaimValidatio
   for (const ed of content.education) {
     checked++;
     const e = c.education.find((y) => y.id === ed.educationId);
-    if (!e || e.institution !== ed.institution || e.qualification !== ed.qualification || (e.grade ?? null) !== ed.grade) {
+    if (!e || e.institution !== ed.institution || e.qualification !== ed.qualification || (e.grade ?? null) !== ed.grade || (ed.highlights ?? []).some((h) => !e.highlights.includes(h))) {
       errors.push(`Education ${ed.educationId} does not match candidate data.`);
     }
   }

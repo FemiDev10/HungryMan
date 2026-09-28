@@ -76,7 +76,7 @@ const collections = {
     model: 'evidence',
     schema: z.object({
       kind: z.enum(['SKILL', 'EXPERIENCE', 'ACHIEVEMENT', 'EDUCATION', 'PROJECT', 'CERTIFICATION', 'TRAIT', 'AVAILABILITY', 'OTHER']),
-      claim: z.string().min(3).max(600),
+      claim: z.string().min(3).max(2000),
       source: z.string().min(1).max(500),
       date,
       allowedForCV: z.boolean().optional(),

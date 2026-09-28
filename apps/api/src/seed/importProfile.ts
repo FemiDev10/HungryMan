@@ -21,14 +21,14 @@ if (!file) {
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
 const Extra = z.object({
   employment: z.array(z.object({ datesText: z.string().nullable().optional(), titleVariants: z.record(z.string(), z.string()).optional() }).passthrough()),
-  education: z.array(z.object({ datesText: z.string().nullable().optional() }).passthrough()),
+  education: z.array(z.object({ datesText: z.string().nullable().optional(), highlights: z.array(z.string()).optional() }).passthrough()),
 });
 const base = CvImportSchema.parse(raw);
 const extra = Extra.parse(raw);
 const data = {
   ...base,
   employment: base.employment.map((e, i) => ({ ...e, datesText: extra.employment[i]?.datesText ?? null, titleVariants: extra.employment[i]?.titleVariants ?? {} })),
-  education: base.education.map((e, i) => ({ ...e, datesText: extra.education[i]?.datesText ?? null })),
+  education: base.education.map((e, i) => ({ ...e, datesText: extra.education[i]?.datesText ?? null, highlights: extra.education[i]?.highlights ?? [] })),
 };
 await ensureDefaults();
 const c = await getCandidate();

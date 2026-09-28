@@ -7,3 +7,5 @@ storage/
 *.log
 coverage/
 .DS_Store
+.profile-imported
+*-profile.json
