@@ -19,6 +19,9 @@ export const SKILL_VOCABULARY: Partial<Record<JobCategory, string[]>> = {
   HOSPITALITY: ['customer service', 'food hygiene', 'barista', 'cash handling', 'epos', 'teamwork', 'food safety', 'bar work', 'table service'],
   RETAIL: ['customer service', 'cash handling', 'till', 'stock replenishment', 'merchandising', 'epos', 'teamwork', 'visual merchandising'],
   WAREHOUSE: ['picking', 'packing', 'forklift', 'manual handling', 'rf scanner', 'stock control', 'health and safety', 'flt licence'],
+  ADMIN_RECEPTION: ['data entry', 'microsoft office', 'excel', 'email', 'scheduling', 'filing', 'customer service', 'organisation', 'communication'],
+  CUSTOMER_SERVICE: ['customer service', 'communication', 'problem solving', 'complaint handling', 'crm', 'email', 'phone manner', 'teamwork'],
+  TEACHING_SUPPORT: ['supporting students', 'classroom support', 'supervising children', 'communication', 'patience', 'safeguarding', 'organisation'],
   GENERAL_ENTRY_LEVEL: ['customer service', 'teamwork', 'communication', 'reliability', 'manual handling', 'time management'],
 };
 

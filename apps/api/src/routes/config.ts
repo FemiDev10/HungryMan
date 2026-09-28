@@ -13,7 +13,7 @@ import { importRegisterCsv, lookupSponsor, refreshRegisterFromGovUk, registerSta
 
 export const configRouter = Router();
 
-const CATEGORY = z.enum(['PRODUCT_DESIGN', 'UX', 'UX_RESEARCH', 'PRODUCT_MANAGEMENT', 'FRONTEND', 'SOFTWARE', 'AI', 'TECH_GENERAL', 'HOSPITALITY', 'KITCHEN_PORTER', 'CLEANING', 'SECURITY', 'RETAIL', 'WAREHOUSE', 'GENERAL_ENTRY_LEVEL', 'OTHER']);
+const CATEGORY = z.enum(['PRODUCT_DESIGN', 'UX', 'UX_RESEARCH', 'PRODUCT_MANAGEMENT', 'FRONTEND', 'SOFTWARE', 'AI', 'TECH_GENERAL', 'HOSPITALITY', 'KITCHEN_PORTER', 'CLEANING', 'SECURITY', 'RETAIL', 'WAREHOUSE', 'GENERAL_ENTRY_LEVEL', 'ADMIN_RECEPTION', 'CUSTOMER_SERVICE', 'TEACHING_SUPPORT', 'OTHER']);
 
 // ─────────────────────────────── CV profiles ─────────────────────────────
 

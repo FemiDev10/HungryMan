@@ -8,7 +8,7 @@ import { COVER_LETTER_PROMPT, CV_IMPORT_PROMPT, CV_PLAN_PROMPT, JOB_ANALYSIS_PRO
 
 const CATEGORIES = [
   'PRODUCT_DESIGN', 'UX', 'UX_RESEARCH', 'PRODUCT_MANAGEMENT', 'FRONTEND', 'SOFTWARE', 'AI', 'TECH_GENERAL',
-  'HOSPITALITY', 'KITCHEN_PORTER', 'CLEANING', 'SECURITY', 'RETAIL', 'WAREHOUSE', 'GENERAL_ENTRY_LEVEL', 'OTHER',
+  'HOSPITALITY', 'KITCHEN_PORTER', 'CLEANING', 'SECURITY', 'RETAIL', 'WAREHOUSE', 'GENERAL_ENTRY_LEVEL', 'ADMIN_RECEPTION', 'CUSTOMER_SERVICE', 'TEACHING_SUPPORT', 'OTHER',
 ] as const;
 
 const JobAnalysisSchema = z.object({
@@ -46,7 +46,7 @@ export const CvImportSchema = z.object({
   projects: z.array(z.object({ ref: z.string(), name: z.string(), role: z.string().nullable(), url: z.string().nullable(), description: z.string().nullable(), shipped: z.boolean(), tags: z.array(z.string()), categories: z.array(CAT) })),
   skills: z.array(z.object({ name: z.string(), categories: z.array(CAT) })),
   certifications: z.array(z.object({ name: z.string(), issuer: z.string().nullable(), issuedAt: z.string().nullable() })),
-  evidence: z.array(z.object({ kind: z.enum(['EXPERIENCE', 'ACHIEVEMENT', 'SKILL', 'PROJECT', 'EDUCATION', 'CERTIFICATION', 'TRAIT', 'OTHER']), claim: z.string(), employmentRef: z.string().nullable(), projectRef: z.string().nullable(), categories: z.array(CAT), tags: z.array(z.string()) })),
+  evidence: z.array(z.object({ kind: z.enum(['EXPERIENCE', 'ACHIEVEMENT', 'SKILL', 'PROJECT', 'EDUCATION', 'CERTIFICATION', 'TRAIT', 'AVAILABILITY', 'OTHER']), claim: z.string(), employmentRef: z.string().nullable(), projectRef: z.string().nullable(), categories: z.array(CAT), tags: z.array(z.string()) })),
 });
 export type CvImport = z.infer<typeof CvImportSchema>;
 

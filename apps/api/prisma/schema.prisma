@@ -33,6 +33,9 @@ enum JobCategory {
   RETAIL
   WAREHOUSE
   GENERAL_ENTRY_LEVEL
+  ADMIN_RECEPTION
+  CUSTOMER_SERVICE
+  TEACHING_SUPPORT
   OTHER
 }
 
@@ -217,6 +220,7 @@ model Education {
   startDate    DateTime?
   endDate      DateTime?
   inProgress   Boolean   @default(false)
+  datesText    String?
   location     String?
   highlights   String[]  @default([])
   sortOrder    Int       @default(0)
@@ -234,6 +238,8 @@ model Employment {
   endDate      DateTime?
   current      Boolean   @default(false)
   employmentType EmploymentType @default(UNKNOWN)
+  datesText    String?   // shown instead of exact dates when they're approximate, e.g. "2024–2025"
+  titleVariants Json     @default("{}") // {JobCategory: title} — true alternative titles the candidate supplied, e.g. {"CLEANING": "School Assistant (Cleaning & Facilities)"}
   description  String?
   tags         String[]  @default([]) // e.g. "fintech", "saas", "hospitality", "customer-facing"
   categories   JobCategory[] @default([]) // job categories this experience is genuinely relevant to

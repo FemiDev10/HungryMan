@@ -58,7 +58,7 @@ export async function renderCvPdf(cv: CvContent): Promise<Buffer> {
   if (cv.experience.length) {
     section('Experience');
     for (const e of cv.experience) {
-      const dates = `${fmtMonth(e.start)} – ${e.current ? 'Present' : fmtMonth(e.end)}`;
+      const dates = e.datesText ?? `${fmtMonth(e.start)} – ${e.current ? 'Present' : fmtMonth(e.end)}`;
       const top = doc.y;
       doc.font('Helvetica-Bold').fontSize(body + 0.5).fillColor('#111').text(`${e.title}, ${e.employer}`, 48, top, { width: width - 130 });
       const afterTitle = doc.y;
@@ -83,7 +83,7 @@ export async function renderCvPdf(cv: CvContent): Promise<Buffer> {
     section('Education');
     for (const ed of cv.education) {
       doc.font('Helvetica-Bold').fontSize(body).fillColor('#111').text(`${ed.qualification}${ed.field ? `, ${ed.field}` : ''}${ed.grade ? ` (${ed.grade})` : ''}`);
-      doc.font('Helvetica').fontSize(9).fillColor('#555').text(`${ed.institution}  ·  ${fmtMonth(ed.start)} – ${ed.inProgress ? `expected ${fmtMonth(ed.end)}` : fmtMonth(ed.end)}`);
+      doc.font('Helvetica').fontSize(9).fillColor('#555').text(`${ed.institution}  ·  ${ed.datesText ?? `${fmtMonth(ed.start)} – ${ed.inProgress ? `expected ${fmtMonth(ed.end)}` : fmtMonth(ed.end)}`}`);
       doc.moveDown(0.25);
     }
   }

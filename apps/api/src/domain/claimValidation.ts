@@ -131,7 +131,9 @@ export function validateCv(content: CvContent, c: CandidateLike): ClaimValidatio
       errors.push(`Employment ${x.employmentId} does not exist.`);
       continue;
     }
-    if (e.title !== x.title || e.employer !== x.employer) errors.push(`Employment ${x.employmentId}: title/employer altered.`);
+    const variants = Object.values((e.titleVariants && typeof e.titleVariants === 'object' ? e.titleVariants : {}) as Record<string, string>);
+    if ((e.title !== x.title && !variants.includes(x.title)) || e.employer !== x.employer) errors.push(`Employment ${x.employmentId}: title/employer altered.`);
+    if ((x.datesText ?? null) !== (e.datesText ?? null)) errors.push(`Employment ${x.employmentId}: dates altered.`);
     for (const b of x.bullets) {
       checked++;
       checkBullet(b, c, `${x.title} at ${x.employer}`, errors);

@@ -11,7 +11,7 @@ import { useAction } from '../../lib/hooks';
 import { CATEGORIES, CATEGORY_LABELS } from '../../lib/labels';
 import { nullIfEmpty, numOrNull, toDateInput } from '../../lib/format';
 
-export type FieldType = 'text' | 'textarea' | 'url' | 'date' | 'bool' | 'number' | 'tags' | 'categories' | 'select';
+export type FieldType = 'text' | 'textarea' | 'url' | 'date' | 'bool' | 'number' | 'tags' | 'categories' | 'select' | 'variants';
 
 export interface FieldDef {
   key: string;
@@ -50,6 +50,12 @@ function toFormValues(fields: FieldDef[], item: Values | null): Values {
       case 'select':
         v[f.key] = raw == null ? (f.options?.[0]?.value ?? '') : String(raw);
         break;
+      case 'variants':
+        // {CLEANING: "School Assistant (Cleaning)"} → "Cleaning: School Assistant (Cleaning)" per line
+        v[f.key] = Object.entries((raw as Record<string, string>) ?? {})
+          .map(([k, t]) => `${CATEGORY_LABELS[k as keyof typeof CATEGORY_LABELS] ?? k}: ${t}`)
+          .join('\n');
+        break;
       default:
         v[f.key] = raw == null ? '' : String(raw);
     }
@@ -83,6 +89,19 @@ function toBody(fields: FieldDef[], v: Values): Values {
       case 'select':
         body[f.key] = raw === '' ? null : raw;
         break;
+      case 'variants': {
+        const out: Record<string, string> = {};
+        for (const line of String(raw ?? '').split('\n')) {
+          const i = line.indexOf(':');
+          if (i < 0) continue;
+          const label = line.slice(0, i).trim().toLowerCase();
+          const key = CATEGORIES.find((c) => c.toLowerCase() === label.replace(/[\s/-]+/g, '_') || CATEGORY_LABELS[c].toLowerCase() === label);
+          const title = line.slice(i + 1).trim();
+          if (key && title) out[key] = title;
+        }
+        body[f.key] = out;
+        break;
+      }
     }
   }
   return body;
@@ -90,6 +109,7 @@ function toBody(fields: FieldDef[], v: Values): Values {
 
 export function FieldInput({ f, value, onChange }: { f: FieldDef; value: unknown; onChange: (v: unknown) => void }) {
   switch (f.type) {
+    case 'variants':
     case 'textarea':
       return <textarea className="input min-h-24" value={String(value ?? '')} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />;
     case 'date':
@@ -132,7 +152,7 @@ export function ItemForm({ fields, values, setValues }: { fields: FieldDef[]; va
             key={f.key}
             label={`${f.label}${f.required ? ' *' : ''}`}
             hint={f.hint}
-            className={f.wide || f.type === 'textarea' || f.type === 'tags' || f.type === 'categories' ? 'sm:col-span-2' : undefined}
+            className={f.wide || f.type === 'textarea' || f.type === 'variants' || f.type === 'tags' || f.type === 'categories' ? 'sm:col-span-2' : undefined}
           >
             <FieldInput f={f} value={values[f.key]} onChange={(v) => setValues((s) => ({ ...s, [f.key]: v }))} />
           </Field>

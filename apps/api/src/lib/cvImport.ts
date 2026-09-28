@@ -12,7 +12,12 @@ const toDate = (s: string | null | undefined) => {
  * Store an extracted CV as DRAFT records. Nothing here is used by the agent until the
  * candidate approves it. Personal details only fill fields that are currently empty.
  */
-export async function saveCvImport(candidateId: string, data: CvImport, fileName: string) {
+type ImportData = Omit<CvImport, 'employment' | 'education'> & {
+  employment: (CvImport['employment'][number] & { datesText?: string | null; titleVariants?: Record<string, string> })[];
+  education: (CvImport['education'][number] & { datesText?: string | null })[];
+};
+
+export async function saveCvImport(candidateId: string, data: ImportData, fileName: string) {
   const source = `Imported from CV (${fileName})`;
   const counts = { employment: 0, education: 0, projects: 0, skills: 0, certifications: 0, evidence: 0 };
 
@@ -34,7 +39,7 @@ export async function saveCvImport(candidateId: string, data: CvImport, fileName
   const employmentIds = new Map<string, string>();
   for (const [i, e] of data.employment.entries()) {
     const row = await prisma.employment.create({
-      data: { candidateId, employer: e.employer, title: e.title, location: e.location, startDate: toDate(e.startDate), endDate: e.current ? null : toDate(e.endDate), current: e.current, description: e.description, tags: e.tags, categories: e.categories, sortOrder: i, status: 'DRAFT' },
+      data: { candidateId, employer: e.employer, title: e.title, location: e.location, startDate: toDate(e.startDate), endDate: e.current ? null : toDate(e.endDate), current: e.current, description: e.description, tags: e.tags, categories: e.categories, datesText: e.datesText ?? null, titleVariants: e.titleVariants ?? {}, sortOrder: i, status: 'DRAFT' },
     });
     employmentIds.set(e.ref, row.id);
     counts.employment++;
@@ -48,7 +53,7 @@ export async function saveCvImport(candidateId: string, data: CvImport, fileName
     counts.projects++;
   }
   for (const ed of data.education) {
-    await prisma.education.create({ data: { candidateId, institution: ed.institution, qualification: ed.qualification, field: ed.field, grade: ed.grade, startDate: toDate(ed.startDate), endDate: toDate(ed.endDate), inProgress: ed.inProgress, status: 'DRAFT' } });
+    await prisma.education.create({ data: { candidateId, institution: ed.institution, qualification: ed.qualification, field: ed.field, grade: ed.grade, startDate: toDate(ed.startDate), endDate: toDate(ed.endDate), inProgress: ed.inProgress, datesText: ed.datesText ?? null, status: 'DRAFT' } });
     counts.education++;
   }
   const existingSkills = new Set((await prisma.skill.findMany({ where: { candidateId }, select: { name: true } })).map((s) => s.name.toLowerCase()));

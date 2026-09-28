@@ -28,6 +28,9 @@ export const GENERAL_CATEGORIES: JobCategory[] = [
   'RETAIL',
   'WAREHOUSE',
   'GENERAL_ENTRY_LEVEL',
+  'ADMIN_RECEPTION',
+  'CUSTOMER_SERVICE',
+  'TEACHING_SUPPORT',
 ];
 
 export function trackForCategory(category: JobCategory): Track | null {
@@ -87,6 +90,8 @@ export interface EmploymentLike {
   categories: JobCategory[];
   sortOrder?: number;
   status?: 'DRAFT' | 'APPROVED';
+  datesText?: string | null;
+  titleVariants?: unknown; // {JobCategory: title}
 }
 
 export interface ProjectLike {
@@ -115,6 +120,7 @@ export interface EducationLike {
   inProgress: boolean;
   highlights: string[];
   status?: 'DRAFT' | 'APPROVED';
+  datesText?: string | null;
 }
 
 export interface SkillLike {

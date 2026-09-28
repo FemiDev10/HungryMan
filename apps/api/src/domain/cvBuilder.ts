@@ -1,6 +1,6 @@
 import type { JobCategory } from '@prisma/client';
 import { hasPhrase, normalize } from './text.js';
-import { PROFESSIONAL_CATEGORIES } from './types.js';
+import { GENERAL_CATEGORIES, PROFESSIONAL_CATEGORIES } from './types.js';
 import type {
   CandidateAvailability,
   CandidateLike,
@@ -42,6 +42,7 @@ export interface CvContent {
     location: string | null;
     start: string | null;
     end: string | null;
+    datesText: string | null; // approximate dates exactly as the candidate gave them
     current: boolean;
     bullets: CvBullet[];
   }[];
@@ -54,6 +55,7 @@ export interface CvContent {
     grade: string | null;
     start: string | null;
     end: string | null;
+    datesText: string | null;
     inProgress: boolean;
   }[];
   certifications: { certificationId: string; name: string; issuer: string | null; issuedAt: string | null }[];
@@ -95,25 +97,37 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
   const priority = new Map((plan?.evidencePriority ?? []).map((id, i) => [id, 1000 - i]));
   const rank = (e: EvidenceLike) => (priority.get(e.id) ?? 0) + relevance(e, category, profile, jobText);
   const pages = Math.max(1, profile.maximumPages);
-  const bulletsPerRole = profile.track === 'PROFESSIONAL' ? (pages >= 2 ? 5 : 3) : pages >= 2 ? 3 : 2;
+  const bulletsPerRole = profile.track === 'PROFESSIONAL' ? (pages >= 2 ? 5 : 3) : 3;
+  const empById = new Map(candidate.employment.map((e) => [e.id, e]));
+  // On a general-work CV, a generic point attached to a tech job only counts if the candidate
+  // gave that job a title for this kind of work (e.g. "Customer Service & Product Support").
+  const bulletRank = (e: EvidenceLike) => {
+    const emp = e.employmentId ? empById.get(e.employmentId) : undefined;
+    if (profile.track === 'GENERAL' && emp && e.categories.length === 0 && emp.categories.some((c) => PROFESSIONAL_CATEGORIES.includes(c)) && titleFor(emp, category, profile) === emp.title) return -1;
+    return rank(e);
+  };
 
   // Experience
   const employment = candidate.employment
     .map((emp) => {
       const bullets = cvEvidence
         // Negative rank = evidence about a different field (e.g. design work on a kitchen porter CV).
-        .filter((e) => e.employmentId === emp.id && rank(e) >= 0)
-        .sort((a, b) => rank(b) - rank(a))
+        .filter((e) => e.employmentId === emp.id && bulletRank(e) >= 0)
+        .sort((a, b) => bulletRank(b) - bulletRank(a))
         .slice(0, bulletsPerRole)
-        .map((e) => ({ text: e.claim, evidenceId: e.id }));
+        .map((e) => ({ text: e.claim, evidenceId: e.id, score: bulletRank(e) }));
       const relevant =
         emp.categories.includes(category) ||
         emp.categories.some((c) => profile.categories.includes(c)) ||
         emp.tags.some((t) => profile.preferredExperience.includes(t));
-      // General-work CVs never show tech/design roles: a kitchen porter CV lists only non-tech work.
+      // Each track only shows roles that belong to it: a kitchen porter CV never lists design jobs,
+      // and a product designer CV never lists hotel or school jobs.
       const techRole = emp.categories.length > 0 && emp.categories.every((c) => PROFESSIONAL_CATEGORIES.includes(c));
-      const excluded = profile.excludedExperience.some((t) => emp.tags.includes(t)) || (profile.track === 'GENERAL' && techRole);
-      return { emp, bullets, relevant, excluded };
+      const generalRole = emp.categories.length > 0 && emp.categories.every((c) => GENERAL_CATEGORIES.includes(c));
+      const excluded =
+        profile.excludedExperience.some((t) => emp.tags.includes(t)) || (profile.track === 'GENERAL' && techRole) || (profile.track === 'PROFESSIONAL' && generalRole);
+      const score = bullets.reduce((sum, b) => sum + b.score, 0);
+      return { emp, bullets: bullets.map(({ text, evidenceId }) => ({ text, evidenceId })), relevant, excluded, score };
     })
     // Keep the role in history (gaps look worse than an unrelated job), but drop explicitly excluded ones.
     .filter((x) => !x.excluded);
@@ -121,7 +135,8 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
   const byDate = (a: (typeof employment)[number], b: (typeof employment)[number]) =>
     (b.emp.current ? 1 : 0) - (a.emp.current ? 1 : 0) ||
     new Date(b.emp.startDate ?? 0).getTime() - new Date(a.emp.startDate ?? 0).getTime();
-  if (profile.experienceOrdering === 'RELEVANCE') employment.sort((a, b) => Number(b.relevant) - Number(a.relevant) || byDate(a, b));
+  if (profile.track === 'GENERAL') employment.sort((a, b) => b.score - a.score || byDate(a, b)); // best match for this vacancy first
+  else if (profile.experienceOrdering === 'RELEVANCE') employment.sort((a, b) => Number(b.relevant) - Number(a.relevant) || byDate(a, b));
   else employment.sort(byDate);
 
   // Projects
@@ -153,6 +168,7 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
   const strengths = cvEvidence
     .filter((e) => !e.employmentId && !e.projectId && ['TRAIT', 'AVAILABILITY', 'ACHIEVEMENT', 'OTHER'].includes(e.kind))
     .filter((e) => profile.track !== 'GENERAL' || !e.tags.includes('tech'))
+    .filter((e) => !e.tags.includes('summary'))
     .filter((e) => rank(e) >= 1)
     .sort((a, b) => rank(b) - rank(a))
     .slice(0, profile.track === 'GENERAL' ? 6 : 4)
@@ -178,7 +194,7 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
 
   const summary = plan?.summary?.length
     ? plan.summary
-    : deterministicSummary(candidate, profile, job, skills, strengths, employment.flatMap((e) => e.bullets));
+    : deterministicSummary(candidate, profile, job, category, skills, strengths, employment.flatMap((e) => e.bullets));
 
   const content: CvContent = {
     schemaVersion: 1,
@@ -199,11 +215,12 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
     // like a design CV. Omitting roles is fine; nothing is added that isn't in the profile.
     experience: (profile.track === 'GENERAL' ? employment.filter((e) => e.bullets.length > 0).slice(0, 3) : employment).map(({ emp, bullets }) => ({
       employmentId: emp.id,
-      title: emp.title,
+      title: titleFor(emp, category, profile),
       employer: emp.employer,
       location: emp.location ?? null,
       start: iso(emp.startDate),
       end: iso(emp.endDate),
+      datesText: emp.datesText ?? null,
       current: emp.current,
       bullets,
     })),
@@ -216,6 +233,7 @@ export function buildCvContent({ candidate, profile, job, category, plan }: Buil
       grade: ed.grade ?? null,
       start: iso(ed.startDate),
       end: iso(ed.endDate),
+      datesText: ed.datesText ?? null,
       inProgress: ed.inProgress,
     })),
     certifications: candidate.certifications
@@ -230,6 +248,7 @@ function deterministicSummary(
   candidate: CandidateLike,
   profile: CvProfileLike,
   job: JobLike | null,
+  category: JobCategory,
   skills: { skillId: string; name: string }[],
   strengths: CvBullet[],
   bullets: CvBullet[],
@@ -246,7 +265,15 @@ function deterministicSummary(
   const achievement = bullets.find((b) => /\d/.test(b.text)) ?? bullets[0];
   const highlight = profile.track === 'PROFESSIONAL' ? achievement ?? strengths[0] : strengths[0] ?? bullets[0];
 
+  // A candidate-written summary line for this kind of job (evidence tagged "summary").
+  const summaryLine = candidate.evidence
+    .filter((e) => e.allowedForCV && e.tags.includes('summary'))
+    .map((e) => ({ e, s: e.categories.includes(category) ? 3 : e.categories.some((c) => profile.categories.includes(c)) ? 2 : e.categories.length === 0 ? 1 : -1 }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s)[0]?.e;
+
   const values: Record<string, { text: string; refs: Ref[] } | null> = {
+    summary: summaryLine ? { text: summaryLine.claim.replace(/\.?$/, '.'), refs: [`evidence:${summaryLine.id}`] } : null,
     headline: candidate.headline ? { text: candidate.headline, refs: ['candidate:headline'] } : null,
     topSkills: topSkills.length ? { text: joinList(topSkills.map((s) => s.name)), refs: topSkills.map((s) => `skill:${s.skillId}`) } : null,
     highlight: highlight ? { text: highlight.text.replace(/\.?$/, '.'), refs: [`evidence:${highlight.evidenceId}`] } : null,
@@ -310,4 +337,11 @@ function fitToPages(c: CvContent): CvContent {
     else break;
   }
   return c;
+}
+
+/** A candidate-supplied alternative title for this kind of job, else the real title. */
+export function titleFor(emp: { title: string; titleVariants?: unknown }, category: JobCategory, profile: CvProfileLike): string {
+  const variants = (emp.titleVariants && typeof emp.titleVariants === 'object' ? emp.titleVariants : {}) as Record<string, string>;
+  for (const c of [category, ...profile.categories]) if (variants[c]) return variants[c];
+  return emp.title;
 }

@@ -316,3 +316,36 @@ describe('general-work CVs leave out tech roles', () => {
     expect(cv.experience.map((e) => e.employer)).toEqual(['Campus Café']);
   });
 });
+
+describe('tailored general-work CVs', () => {
+  const c = fixtureCandidate();
+  c.employment.push({ id: 'school', employer: 'Example School', title: 'School Assistant', location: 'Port Harcourt', startDate: new Date('2022-01-01'), endDate: null, current: false, description: null, tags: ['school'], categories: ['CLEANING', 'TEACHING_SUPPORT'], datesText: '2022 – 2025', titleVariants: { CLEANING: 'School Assistant (Cleaning & Facilities)' } });
+  c.evidence.push(
+    { id: 'sc1', kind: 'EXPERIENCE', claim: 'Cleaned classrooms and emptied bins', source: 'Self', allowedForCV: true, allowedForApplication: true, categories: ['CLEANING'], tags: ['cleaning'], employmentId: 'school', projectId: null },
+    { id: 'sc2', kind: 'EXPERIENCE', claim: 'Supported teachers in class', source: 'Self', allowedForCV: true, allowedForApplication: true, categories: ['TEACHING_SUPPORT'], tags: [], employmentId: 'school', projectId: null },
+    { id: 'sum', kind: 'OTHER', claim: 'Reliable cleaner with school cleaning experience', source: 'Self', allowedForCV: true, allowedForApplication: true, categories: ['CLEANING'], tags: ['summary'], employmentId: null, projectId: null },
+  );
+  const cleaner = { ...fixtureProfile('kp'), slug: 'cleaner', categories: ['CLEANING'] as const, targetJobTitles: ['cleaner'], summaryTemplate: '{summary}. {highlight}.' };
+
+  it('uses the candidate-supplied title variant, approximate dates and summary line', () => {
+    const cv = buildCvContent({ candidate: c, profile: { ...cleaner, categories: ['CLEANING'] }, job: fixtureJob({ title: 'Cleaner', description: 'Office cleaning' }), category: 'CLEANING' });
+    expect(validateCv(cv, c).valid).toBe(true);
+    const school = cv.experience.find((e) => e.employer === 'Example School')!;
+    expect(school.title).toBe('School Assistant (Cleaning & Facilities)');
+    expect(school.datesText).toBe('2022 – 2025');
+    expect(school.bullets.map((b) => b.evidenceId)).toEqual(['sc1']);
+    expect(cv.summary[0].text).toBe('Reliable cleaner with school cleaning experience.');
+    expect(cv.strengths.map((s) => s.evidenceId)).not.toContain('sum');
+  });
+
+  it('rejects a title that is neither the real title nor a supplied variant', () => {
+    const cv = buildCvContent({ candidate: c, profile: { ...cleaner, categories: ['CLEANING'] }, job: fixtureJob({ title: 'Cleaner', description: 'Office cleaning' }), category: 'CLEANING' });
+    cv.experience.find((e) => e.employer === 'Example School')!.title = 'Head of Facilities';
+    expect(validateCv(cv, c).valid).toBe(false);
+  });
+
+  it('keeps general-only jobs off professional CVs', () => {
+    const cv = buildCvContent({ candidate: c, profile: fixtureProfile('designer'), job: fixtureJob(), category: 'PRODUCT_DESIGN' });
+    expect(cv.experience.map((e) => e.employer)).not.toContain('Example School');
+  });
+});

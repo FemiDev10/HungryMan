@@ -10,7 +10,7 @@ Extract facts only from the advert text. Never invent details that are not state
 
 Categories (pick the single best):
 PRODUCT_DESIGN, UX, UX_RESEARCH, PRODUCT_MANAGEMENT, FRONTEND, SOFTWARE, AI, TECH_GENERAL,
-HOSPITALITY, KITCHEN_PORTER, CLEANING, SECURITY, RETAIL, WAREHOUSE, GENERAL_ENTRY_LEVEL, OTHER.
+HOSPITALITY, KITCHEN_PORTER, CLEANING, SECURITY, RETAIL, WAREHOUSE, GENERAL_ENTRY_LEVEL, ADMIN_RECEPTION, CUSTOMER_SERVICE, TEACHING_SUPPORT, OTHER.
 
 Sponsorship: OFFERED only if the advert explicitly says visa sponsorship is available; NOT_OFFERED only if it explicitly says it is not; UNCLEAR if it mentions visas/right to work ambiguously; NONE if it says nothing. Quote the exact sentence as evidence when there is one.
 Requirements: short phrases copied or tightly paraphrased from the advert's essential criteria. Preferred requirements: the "nice to have"/desirable criteria.
@@ -83,7 +83,7 @@ Rules:
 - Evidence items are single factual claims, each copied or tightly paraphrased from one CV bullet or sentence, in first-person-free CV style (e.g. "Led the redesign of the driver onboarding flow"). Keep the original numbers exactly.
 - Link each evidence item to its job or project with employmentRef / projectRef (the "ref" you gave that job/project), when it clearly belongs to one.
 - Dates as "YYYY-MM" (or "YYYY" if only the year is given); null when absent. current=true only if the CV says present/current.
-- categories: the job categories a record is genuinely relevant to, from: PRODUCT_DESIGN, UX, UX_RESEARCH, PRODUCT_MANAGEMENT, FRONTEND, SOFTWARE, AI, TECH_GENERAL, HOSPITALITY, KITCHEN_PORTER, CLEANING, SECURITY, RETAIL, WAREHOUSE, GENERAL_ENTRY_LEVEL. Use an empty list for broadly transferable items (teamwork, reliability, communication).
+- categories: the job categories a record is genuinely relevant to, from: PRODUCT_DESIGN, UX, UX_RESEARCH, PRODUCT_MANAGEMENT, FRONTEND, SOFTWARE, AI, TECH_GENERAL, HOSPITALITY, KITCHEN_PORTER, CLEANING, SECURITY, RETAIL, WAREHOUSE, GENERAL_ENTRY_LEVEL, ADMIN_RECEPTION, CUSTOMER_SERVICE, TEACHING_SUPPORT. Use an empty list for broadly transferable items (teamwork, reliability, communication).
 - tags: short lowercase labels such as fintech, saas, mobile, shipped, leadership, customer-facing, night-shifts.
 - Evidence kinds: EXPERIENCE, ACHIEVEMENT, SKILL, PROJECT, EDUCATION, CERTIFICATION, TRAIT, OTHER.`,
 };

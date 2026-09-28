@@ -25,6 +25,7 @@ const educationFields: FieldDef[] = [
   { key: 'grade', label: 'Grade', type: 'text' },
   { key: 'startDate', label: 'Start date', type: 'date' },
   { key: 'endDate', label: 'End date', type: 'date' },
+  { key: 'datesText', label: 'Dates as shown on CV', type: 'text', placeholder: 'Sep 2026 – Oct 2027 (expected)' },
   { key: 'location', label: 'Location', type: 'text' },
   { key: 'inProgress', label: 'In progress', type: 'bool', description: 'Currently studying' },
   { key: 'highlights', label: 'Highlights', type: 'tags', placeholder: 'Dissertation topic, modules, awards…' },
@@ -50,7 +51,7 @@ export function EducationTab({ c }: { c: Candidate }) {
             {e.grade ? ` · ${e.grade}` : ''}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-subtle">
-            {dateRange(e.startDate, e.endDate, e.inProgress)}
+            {e.datesText ?? dateRange(e.startDate, e.endDate, e.inProgress)}
             {e.inProgress && <Badge tone="blue">In progress</Badge>}
           </div>
           {e.highlights?.length > 0 && <div className="mt-2"><Chips items={e.highlights} /></div>}
@@ -74,10 +75,18 @@ const employmentFields: FieldDef[] = [
   },
   { key: 'startDate', label: 'Start date', type: 'date' },
   { key: 'endDate', label: 'End date', type: 'date' },
+  { key: 'datesText', label: 'Dates as shown on CV', type: 'text', placeholder: '2024 – 2025', hint: 'Use when exact months are unknown — shown instead of the dates above.' },
   { key: 'current', label: 'Current role', type: 'bool', description: 'I still work here' },
   { key: 'description', label: 'Description', type: 'textarea', hint: 'Context only — CV bullets come from Evidence items linked to this role.' },
   { key: 'tags', label: 'Tags', type: 'tags', placeholder: 'fintech, saas, customer-facing…' },
   { key: 'categories', label: 'Relevant job categories', type: 'categories' },
+  {
+    key: 'titleVariants',
+    label: 'Title for specific job types',
+    type: 'variants',
+    placeholder: 'Cleaning: School Assistant (Cleaning & Facilities)\nTeaching / tutoring: School Assistant (Teaching Support)',
+    hint: 'One per line, "Job type: title". Only use titles your employer would confirm.',
+  },
 ];
 
 export function EmploymentTab({ c }: { c: Candidate }) {
@@ -100,7 +109,7 @@ export function EmploymentTab({ c }: { c: Candidate }) {
               {e.employmentType && e.employmentType !== 'UNKNOWN' ? ` · ${humanize(e.employmentType)}` : ''}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-subtle">
-              {dateRange(e.startDate, e.endDate, e.current)}
+              {e.datesText ?? dateRange(e.startDate, e.endDate, e.current)}
               <span>· {ev} evidence item{ev === 1 ? '' : 's'}</span>
             </div>
             {e.description && <p className="mt-1.5 line-clamp-2 text-sm text-muted">{e.description}</p>}

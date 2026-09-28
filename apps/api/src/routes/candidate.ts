@@ -11,7 +11,7 @@ import { saveCvImport } from '../lib/cvImport.js';
 
 export const candidateRouter = Router();
 
-const CATEGORY = z.enum(['PRODUCT_DESIGN', 'UX', 'UX_RESEARCH', 'PRODUCT_MANAGEMENT', 'FRONTEND', 'SOFTWARE', 'AI', 'TECH_GENERAL', 'HOSPITALITY', 'KITCHEN_PORTER', 'CLEANING', 'SECURITY', 'RETAIL', 'WAREHOUSE', 'GENERAL_ENTRY_LEVEL', 'OTHER']);
+const CATEGORY = z.enum(['PRODUCT_DESIGN', 'UX', 'UX_RESEARCH', 'PRODUCT_MANAGEMENT', 'FRONTEND', 'SOFTWARE', 'AI', 'TECH_GENERAL', 'HOSPITALITY', 'KITCHEN_PORTER', 'CLEANING', 'SECURITY', 'RETAIL', 'WAREHOUSE', 'GENERAL_ENTRY_LEVEL', 'ADMIN_RECEPTION', 'CUSTOMER_SERVICE', 'TEACHING_SUPPORT', 'OTHER']);
 const date = z.union([z.string(), z.null()]).optional().transform((v) => (v ? new Date(v) : v === null ? null : undefined));
 const str = (max = 500) => z.string().max(max).nullable().optional();
 
@@ -54,11 +54,11 @@ const REVIEW = z.enum(['DRAFT', 'APPROVED']);
 const collections = {
   education: {
     model: 'education',
-    schema: z.object({ institution: z.string().min(1), qualification: z.string().min(1), field: str(), grade: str(100), startDate: date, endDate: date, inProgress: z.boolean().optional(), location: str(), highlights: z.array(z.string()).optional(), sortOrder: z.number().int().optional() }),
+    schema: z.object({ institution: z.string().min(1), qualification: z.string().min(1), field: str(), grade: str(100), startDate: date, endDate: date, inProgress: z.boolean().optional(), location: str(), datesText: str(100), highlights: z.array(z.string()).optional(), sortOrder: z.number().int().optional() }),
   },
   employment: {
     model: 'employment',
-    schema: z.object({ employer: z.string().min(1), title: z.string().min(1), location: str(), startDate: date, endDate: date, current: z.boolean().optional(), employmentType: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT', 'TEMPORARY', 'INTERNSHIP', 'ZERO_HOURS', 'UNKNOWN']).optional(), description: str(4000), tags: z.array(z.string()).optional(), categories: z.array(CATEGORY).optional(), sortOrder: z.number().int().optional() }),
+    schema: z.object({ employer: z.string().min(1), title: z.string().min(1), location: str(), startDate: date, endDate: date, current: z.boolean().optional(), employmentType: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT', 'TEMPORARY', 'INTERNSHIP', 'ZERO_HOURS', 'UNKNOWN']).optional(), description: str(4000), datesText: str(100), titleVariants: z.record(CATEGORY, z.string().max(200)).optional(), tags: z.array(z.string()).optional(), categories: z.array(CATEGORY).optional(), sortOrder: z.number().int().optional() }),
   },
   projects: {
     model: 'project',

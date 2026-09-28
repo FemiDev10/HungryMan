@@ -3,7 +3,7 @@
 export type Track = 'PROFESSIONAL' | 'GENERAL';
 export type JobCategory =
   | 'PRODUCT_DESIGN' | 'UX' | 'UX_RESEARCH' | 'PRODUCT_MANAGEMENT' | 'FRONTEND' | 'SOFTWARE' | 'AI' | 'TECH_GENERAL'
-  | 'HOSPITALITY' | 'KITCHEN_PORTER' | 'CLEANING' | 'SECURITY' | 'RETAIL' | 'WAREHOUSE' | 'GENERAL_ENTRY_LEVEL' | 'OTHER';
+  | 'HOSPITALITY' | 'KITCHEN_PORTER' | 'CLEANING' | 'SECURITY' | 'RETAIL' | 'WAREHOUSE' | 'GENERAL_ENTRY_LEVEL' | 'ADMIN_RECEPTION' | 'CUSTOMER_SERVICE' | 'TEACHING_SUPPORT' | 'OTHER';
 export type Eligibility = 'ELIGIBLE' | 'POTENTIALLY_ELIGIBLE' | 'REQUIRES_REVIEW' | 'NOT_ELIGIBLE' | 'UNKNOWN';
 export type ApplicationStatus =
   | 'DISCOVERED' | 'DEDUPLICATED' | 'CLASSIFIED' | 'ELIGIBILITY_CHECKED' | 'MATCHED' | 'QUEUED'
@@ -351,6 +351,7 @@ export interface Education {
   inProgress: boolean;
   location: string | null;
   highlights: string[];
+  datesText?: string | null;
 }
 
 export interface Employment {
@@ -366,6 +367,8 @@ export interface Employment {
   description: string | null;
   tags: string[];
   categories: JobCategory[];
+  datesText?: string | null;
+  titleVariants?: Partial<Record<JobCategory, string>>;
 }
 
 export interface Project {

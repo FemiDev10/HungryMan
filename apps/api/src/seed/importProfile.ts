@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import * as z from 'zod/v4';
 import { CvImportSchema } from '../ai/claude.js';
 import { prisma } from '../db.js';
 import { getCandidate } from '../lib/candidate.js';
@@ -18,12 +19,25 @@ if (!file) {
   process.exit(1);
 }
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-const data = CvImportSchema.parse(raw);
+const Extra = z.object({
+  employment: z.array(z.object({ datesText: z.string().nullable().optional(), titleVariants: z.record(z.string(), z.string()).optional() }).passthrough()),
+  education: z.array(z.object({ datesText: z.string().nullable().optional() }).passthrough()),
+});
+const base = CvImportSchema.parse(raw);
+const extra = Extra.parse(raw);
+const data = {
+  ...base,
+  employment: base.employment.map((e, i) => ({ ...e, datesText: extra.employment[i]?.datesText ?? null, titleVariants: extra.employment[i]?.titleVariants ?? {} })),
+  education: base.education.map((e, i) => ({ ...e, datesText: extra.education[i]?.datesText ?? null })),
+};
 await ensureDefaults();
 const c = await getCandidate();
 const counts = await saveCvImport(c.id, data, raw.sourceFile ?? path.basename(file));
 console.log('Imported as drafts:', counts);
 
+if (raw.availability || raw.preferences) {
+  await prisma.candidate.update({ where: { id: c.id }, data: { ...(raw.availability ? { availability: raw.availability } : {}), ...(raw.preferences ? { preferences: raw.preferences } : {}) } });
+}
 if (raw.workAuthorisation) {
   const w = raw.workAuthorisation;
   const d = (v: string | null | undefined) => (v ? new Date(v) : null);

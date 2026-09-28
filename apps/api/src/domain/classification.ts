@@ -87,6 +87,21 @@ const RULES: Rule[] = [
     bodyPhrases: ['picking', 'packing', 'forklift', 'pallets', 'distribution centre', 'logistics', 'manual handling'],
   },
   {
+    category: 'TEACHING_SUPPORT',
+    titlePhrases: ['teaching assistant', 'classroom assistant', 'learning support assistant', 'learning support', 'tutor', 'school assistant', 'after school club', 'after-school club', 'play worker', 'playworker', 'nursery assistant', 'cover supervisor', 'lunchtime supervisor', 'student support assistant'],
+    bodyPhrases: ['pupils', 'students', 'classroom', 'school', 'children', 'young people', 'learning', 'safeguarding'],
+  },
+  {
+    category: 'ADMIN_RECEPTION',
+    titlePhrases: ['receptionist', 'admin assistant', 'administrative assistant', 'administration assistant', 'office assistant', 'data entry', 'front desk', 'office administrator', 'administrator', 'clerk'],
+    bodyPhrases: ['data entry', 'microsoft office', 'filing', 'reception', 'answering calls', 'scheduling', 'appointments', 'excel', 'records'],
+  },
+  {
+    category: 'CUSTOMER_SERVICE',
+    titlePhrases: ['customer service advisor', 'customer service assistant', 'customer service representative', 'customer advisor', 'customer support', 'call centre', 'contact centre', 'customer service'],
+    bodyPhrases: ['calls', 'queries', 'complaints', 'contact centre', 'call centre', 'customers', 'phone', 'email'],
+  },
+  {
     category: 'GENERAL_ENTRY_LEVEL',
     titlePhrases: ['general assistant', 'general operative', 'labourer', 'entry level', 'assistant', 'operative', 'temp'],
     bodyPhrases: ['no experience required', 'no experience necessary', 'training provided', 'flexible hours', 'entry level'],

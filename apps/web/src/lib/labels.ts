@@ -28,7 +28,7 @@ export function humanize(value: string | null | undefined): string {
 
 export const CATEGORIES: JobCategory[] = [
   'PRODUCT_DESIGN', 'UX', 'UX_RESEARCH', 'PRODUCT_MANAGEMENT', 'FRONTEND', 'SOFTWARE', 'AI', 'TECH_GENERAL',
-  'HOSPITALITY', 'KITCHEN_PORTER', 'CLEANING', 'SECURITY', 'RETAIL', 'WAREHOUSE', 'GENERAL_ENTRY_LEVEL', 'OTHER',
+  'HOSPITALITY', 'KITCHEN_PORTER', 'CLEANING', 'SECURITY', 'RETAIL', 'WAREHOUSE', 'GENERAL_ENTRY_LEVEL', 'ADMIN_RECEPTION', 'CUSTOMER_SERVICE', 'TEACHING_SUPPORT', 'OTHER',
 ];
 
 export const CATEGORY_LABELS: Record<JobCategory, string> = {
@@ -47,6 +47,9 @@ export const CATEGORY_LABELS: Record<JobCategory, string> = {
   RETAIL: 'Retail',
   WAREHOUSE: 'Warehouse',
   GENERAL_ENTRY_LEVEL: 'General entry-level',
+  ADMIN_RECEPTION: 'Admin / reception',
+  CUSTOMER_SERVICE: 'Customer service',
+  TEACHING_SUPPORT: 'Teaching / tutoring',
   OTHER: 'Other',
 };
 
