@@ -15,4 +15,6 @@ Loop until the queue is empty or I tell you to stop:
 7. If `task.autoSubmit` is false (the warm-up), stop before the final submit, leave the tab open for me, and report `SUBMISSION_ATTEMPTED` with `stepReached: "ready_to_submit"`. Otherwise submit, then report `SUBMITTED` with the confirmation text or number, or `SUBMISSION_ATTEMPTED` if you can't see a confirmation.
 8. POST exactly one result to `/agent-tasks/{taskId}/result` (schema in `docs/BROWSER_AGENTS.md`), then continue with the next task.
 
+On LinkedIn (Easy Apply) and Indeed, go at a person's pace: at most 10 LinkedIn applications per run, and stop the run at any "unusual activity", CAPTCHA or login prompt, reporting it as an exception.
+
 After each application, tell me in one line what happened. At the end, summarise: submitted / waiting for my review / needs me (and why).

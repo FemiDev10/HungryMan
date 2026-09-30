@@ -63,6 +63,9 @@ fi
 # 4. Dependencies, database tables, defaults
 say "Installing dependencies (a few minutes the first time)"
 npm install
+# Newer npm skips packages' install scripts, so Prisma's client isn't generated automatically.
+say "Generating the database client"
+(cd apps/api && npx prisma generate)
 say "Creating database tables"
 npm run db:deploy --workspace apps/api
 say "Adding default CV profiles, schedule and answer library"

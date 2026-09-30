@@ -5,6 +5,7 @@ Private job-application agent: a Node/Express/Prisma API (`apps/api`) and a Reac
 ## Commands
 - `/setup`: install and start everything
 - `/add-job <url or advert>`: add a job
+- `/find-jobs [professional|general|both]`: find jobs on Indeed (connector) and LinkedIn (Chrome)
 - `/apply-queue`: apply to queued jobs in Chrome (Claude in Chrome)
 - `/status`: summary of today
 

@@ -13,6 +13,7 @@
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
+    "db:generate": "prisma generate",
     "db:seed": "tsx src/seed/seed.ts",
     "profile:import": "tsx src/seed/importProfile.ts"
   },

@@ -92,7 +92,7 @@ TEST_DATABASE_URL=postgresql://…/hungryman_test npm test   # + end-to-end pipe
 | `ADZUNA_APP_ID/KEY` | developer.adzuna.com | Adzuna discovery off |
 | `AGENT_API_TOKEN` + a Cowork / Claude in Chrome session | docs/BROWSER_AGENTS.md | applications wait in `BROWSER_EXECUTING` for an agent |
 
-LinkedIn and Indeed are deliberately **not** scraped because their terms forbid it. Use manual import (paste the advert) for jobs you find there.
+LinkedIn and Indeed aren't scraped by the server. Instead `/find-jobs` uses the official **Indeed connector** and browses **LinkedIn in your own logged-in Chrome** at a person's pace (capped per run, stops at any warning), then imports the adverts. `/apply-queue` applies there the same way.
 
 ## Roadmap (spec phases 3–4)
 
