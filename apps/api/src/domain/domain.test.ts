@@ -351,3 +351,16 @@ describe('tailored general-work CVs', () => {
     expect(cv.experience.map((e) => e.employer)).not.toContain('Example School');
   });
 });
+
+describe('ATS keyword check', () => {
+  it('reports advert keywords present on the CV and genuine gaps', async () => {
+    const { atsReport } = await import('./ats.js');
+    const c = fixtureCandidate();
+    const job = fixtureJob({ description: 'We need Figma, prototyping and Framer skills.', requirements: ['Figma', 'Prototyping', 'Framer'] });
+    const cv = buildCvContent({ candidate: c, profile: fixtureProfile('designer'), job, category: 'PRODUCT_DESIGN' });
+    const r = atsReport(cv, job, 'PRODUCT_DESIGN');
+    expect(r.present).toEqual(expect.arrayContaining(['figma', 'prototyping']));
+    expect(r.missing).toContain('framer');
+    expect(JSON.stringify(cv)).not.toMatch(/framer/i); // never padded
+  });
+});

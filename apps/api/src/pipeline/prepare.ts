@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { CvProfile, Prisma } from '@prisma/client';
 import { renderCoverLetterPdf, renderCvPdf } from '../cv/render.js';
+import { atsReport } from '../domain/ats.js';
 import { prisma } from '../db.js';
 import { prepareAnswers } from '../domain/answers.js';
 import { validateCv, validateSentence, type ClaimValidationReport } from '../domain/claimValidation.js';
@@ -81,6 +82,10 @@ export async function prepareApplication(applicationId: string, ctx: PipelineCon
       { message: 'CV validation failed', actor },
     );
   }
+  // ATS check: which advert keywords the CV already shows as plain text; gaps are flagged, never filled.
+  const ats = atsReport(cv.content, job, job.category);
+  if (ats.missing.length) cv.report.warnings.push(`ATS: ${ats.present.length}/${ats.keywords.length} advert keywords on the CV. Not on it (add evidence if you genuinely have them): ${ats.missing.join(', ')}.`);
+  (cv.report as typeof cv.report & { ats?: typeof ats }).ats = ats;
   const pdf = await renderCvPdf(cv.content);
   const fileName = await uniqueFileName(`CV-${datePart(now)}-${profile.slug.toUpperCase()}-${ref}`, 'pdf');
   const storageKey = `cv/${datePart(now)}/${crypto.randomUUID()}.pdf`;
