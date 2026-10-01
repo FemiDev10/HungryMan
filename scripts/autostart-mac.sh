@@ -10,7 +10,10 @@ LABEL="com.hungryman.app"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/hungryman.log"
 
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+DOMAIN="gui/$(id -u)"
+# Stop any running copy and wait until macOS has really removed it (bootout returns before it's done).
+launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+for _ in $(seq 1 20); do launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 || break; sleep 0.5; done
 if [ "${1:-}" = "--off" ]; then
   rm -f "$PLIST"
   echo "HungryMan autostart is off."
@@ -42,7 +45,12 @@ cat > "$PLIST" <<EOF
 </dict>
 </plist>
 EOF
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
+# Retry: launchd can briefly refuse right after a bootout ("Bootstrap failed: 5").
+for i in 1 2 3 4 5; do
+  launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null && break
+  [ "$i" = 5 ] && { echo "Couldn't start the background service. Run: launchctl bootstrap $DOMAIN $PLIST"; exit 1; }
+  sleep 2
+done
 echo "HungryMan now runs in the background and starts when you log in."
 echo "  Dashboard: http://localhost:5173    Logs: $LOG    Turn off: bash scripts/autostart-mac.sh --off"
 echo "  Also open Postgres.app → Settings → tick 'Start automatically after login'."
