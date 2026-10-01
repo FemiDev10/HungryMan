@@ -26,15 +26,15 @@ export function OutreachPage() {
     <div className="space-y-6">
       <PageHeader
         title="Outreach"
-        description="Speculative and follow-up emails sent from your Gmail by the daily run. Only addresses published for hiring are used, each address is emailed once, and each company at most once a month."
+        description="Speculative and follow-up emails that Claude writes as drafts in your Gmail. Open Gmail → Drafts, check each one and press send, then mark it here. Only addresses published for hiring are used, each address is emailed once, and each company at most once a month."
       />
       {quota.data && (
         <Card>
           <div className="flex flex-wrap gap-6 text-sm">
             <div><span className="text-subtle">Today:</span> {quota.data.usedToday} / {quota.data.perDay}</div>
             <div>
-              <span className="text-subtle">Warm-up:</span>{' '}
-              {quota.data.warmUpLeft > 0 ? `next ${quota.data.warmUpLeft} saved as Gmail drafts for you to check` : 'done, emails send automatically'}
+              <span className="text-subtle">Sending:</span>{' '}
+              {!quota.data.autoSend || quota.data.warmUpLeft > 0 ? 'you send each draft from Gmail' : 'automatic'}
             </div>
           </div>
         </Card>

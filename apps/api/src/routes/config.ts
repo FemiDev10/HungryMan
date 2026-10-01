@@ -121,6 +121,7 @@ const SettingsSchema = z
     monthlyIncomeGoal: z.number().min(0).max(100_000),
     outreachEmailsPerDay: z.number().int().min(0).max(30),
     outreachReviewFirstN: z.number().int().min(0).max(20),
+    outreachAutoSend: z.boolean(),
   })
   .partial();
 

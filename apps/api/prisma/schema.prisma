@@ -525,6 +525,7 @@ model Settings {
   reviewFirstN              Int        @default(3)    // warm-up: first N real applications stop before submit
   monthlyIncomeGoal         Float      @default(1000)
   outreachEmailsPerDay      Int        @default(10)
+  outreachAutoSend          Boolean    @default(false) // false: every cold email is only a Gmail draft; the owner presses send
   outreachReviewFirstN      Int        @default(3)    // first N cold emails are saved as Gmail drafts for the owner to check
   updatedAt                 DateTime   @updatedAt
 }

@@ -12,7 +12,7 @@ import { storage } from '../storage/storage.js';
 /**
  * Cold / speculative emails sent from the owner's Gmail by a Claude session (see `.claude/commands/outreach.md`).
  * The API is the gatekeeper: it enforces the daily cap, never emails the same address twice, spaces out emails
- * to one company, and makes the first few drafts-only so the owner can check the tone.
+ * to one company, and keeps every email as a Gmail draft for the owner to send unless they turn on auto-send.
  */
 export const outreachRouter = Router();
 
@@ -36,6 +36,7 @@ async function quota(now = new Date()) {
     perDay: s.outreachEmailsPerDay,
     usedToday: today,
     leftToday: Math.max(0, s.outreachEmailsPerDay - today),
+    autoSend: s.outreachAutoSend,
     reviewFirstN: s.outreachReviewFirstN,
     warmUpLeft: Math.max(0, s.outreachReviewFirstN - done),
   };
@@ -89,7 +90,8 @@ outreachRouter.post('/outreach', async (req, res) => {
   if (!blocked.ok) return res.status(409).json({ error: blocked.reason });
   if (b.cvProfileSlug && !(await prisma.cvProfile.findUnique({ where: { slug: b.cvProfileSlug } }))) return res.status(400).json({ error: `Unknown CV profile ${b.cvProfileSlug}` });
 
-  const warmUp = q.warmUpLeft > 0;
+  // Drafts only unless the owner has turned on auto-send, and even then for the first few (warm-up).
+  const warmUp = !q.autoSend || q.warmUpLeft > 0;
   const row = await prisma.outreach.create({ data: { ...b, recipientEmail: normEmail(b.recipientEmail), warmUp } });
   await audit('OUTREACH_PLANNED', `${row.company} <${row.recipientEmail}>`, { actor: 'agent', data: { outreachId: row.id, warmUp } });
   res.status(201).json({
@@ -110,7 +112,9 @@ outreachRouter.post('/outreach/:id/result', async (req, res) => {
   const b = ResultSchema.parse(req.body);
   const row = await prisma.outreach.findUniqueOrThrow({ where: { id: req.params.id } });
   if (row.status !== 'PLANNED') return res.status(409).json({ error: `Outreach is already ${row.status}` });
-  if (row.warmUp && b.status === 'SENT') return res.status(409).json({ error: 'This is a warm-up email: save it as a Gmail draft (DRAFTED) for the owner to send.' });
+  if (b.status === 'SENT' && (row.warmUp || !(await getSettings()).outreachAutoSend)) {
+    return res.status(409).json({ error: 'This email may only be saved as a Gmail draft (DRAFTED); the owner sends it.' });
+  }
   const updated = await prisma.outreach.update({ where: { id: row.id }, data: { status: b.status, externalId: b.externalId ?? null, note: b.note ?? null, sentAt: b.status === 'SENT' ? new Date() : null } });
   await audit(`OUTREACH_${b.status}` as const, `${row.company} <${row.recipientEmail}>`, { actor: 'agent', data: { outreachId: row.id } });
   res.json(updated);

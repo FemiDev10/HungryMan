@@ -71,7 +71,6 @@ export function GeneralSettings({ s }: { s: Settings }) {
         reviewFirstN: f.reviewFirstN,
         monthlyIncomeGoal: f.monthlyIncomeGoal,
         outreachEmailsPerDay: f.outreachEmailsPerDay,
-        outreachReviewFirstN: f.outreachReviewFirstN,
       }),
     { invalidate: [['settings'], ['overview'], ['checklist']], success: 'Settings saved' },
   );
@@ -116,8 +115,7 @@ export function GeneralSettings({ s }: { s: Settings }) {
             max={50}
             hint="They appear under Exceptions as “Review before submit”. 0 turns warm-up off."
           />
-          <NumberField label="Cold emails per day" value={f.outreachEmailsPerDay} onChange={(n) => set('outreachEmailsPerDay', n)} max={30} hint="Sent from your Gmail by the daily run. 0 turns outreach off." />
-          <NumberField label="Warm-up: first N cold emails saved as drafts" value={f.outreachReviewFirstN} onChange={(n) => set('outreachReviewFirstN', n)} max={20} hint="You check and send these from Gmail, then they go automatically." />
+          <NumberField label="Cold emails per day" value={f.outreachEmailsPerDay} onChange={(n) => set('outreachEmailsPerDay', n)} max={30} hint="Written as drafts in your Gmail by the daily run; you press send. 0 turns outreach off." />
           <Field label="Monthly income goal (£)" hint="Target from part-time general work, before tax. Shown on the Overview.">
             <input
               className="input"

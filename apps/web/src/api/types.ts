@@ -529,6 +529,7 @@ export interface Settings {
   monthlyIncomeGoal: number;
   outreachEmailsPerDay: number;
   outreachReviewFirstN: number;
+  outreachAutoSend: boolean;
   updatedAt?: string;
 }
 
@@ -555,6 +556,7 @@ export interface OutreachQuota {
   perDay: number;
   usedToday: number;
   leftToday: number;
+  autoSend: boolean;
   reviewFirstN: number;
   warmUpLeft: number;
 }

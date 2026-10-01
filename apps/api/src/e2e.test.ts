@@ -239,7 +239,7 @@ suite('end-to-end pipeline (mock browser agent)', () => {
 
   it('gates cold emails: warm-up drafts, dedupe, company spacing, daily cap', async () => {
     await agent.post('/api/agent/control').send({ action: 'RESUME' }).expect(200);
-    await agent.put('/api/settings').send({ outreachEmailsPerDay: 3, outreachReviewFirstN: 1 }).expect(200);
+    await agent.put('/api/settings').send({ outreachEmailsPerDay: 4, outreachReviewFirstN: 1 }).expect(200);
     const bearer = { Authorization: 'Bearer agent-token' };
     const email = (to: string, company: string) => ({
       recipientEmail: to,
@@ -261,12 +261,18 @@ suite('end-to-end pipeline (mock browser agent)', () => {
 
     await agent.post('/api/outreach').set(bearer).send(email('chef@cafe-one.example', 'Somewhere Else')).expect(409); // same address
     await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-one.example', 'Cafe One')).expect(409); // same company this month
+    // Auto-send is off by default: past the warm-up, emails are still drafts only.
     const second = await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-two.example', 'Cafe Two')).expect(201);
-    expect(second.body.mode).toBe('SEND');
-    await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-three.example', 'Cafe Three')).expect(201);
-    await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-four.example', 'Cafe Four')).expect(429); // daily cap of 3
+    expect(second.body.mode).toBe('DRAFT');
+    await agent.post(`/api/outreach/${second.body.outreach.id}/result`).set(bearer).send({ status: 'SENT' }).expect(409);
+    // Only when the owner turns auto-send on may an email be sent directly.
+    await agent.put('/api/settings').send({ outreachAutoSend: true }).expect(200);
+    const third = await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-three.example', 'Cafe Three')).expect(201);
+    expect(third.body.mode).toBe('SEND');
+    await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-four.example', 'Cafe Four')).expect(201);
+    await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-five.example', 'Cafe Five')).expect(429); // daily cap of 4
     const q = await agent.get('/api/outreach/quota').expect(200);
-    expect(q.body).toMatchObject({ usedToday: 3, leftToday: 0, warmUpLeft: 0 });
+    expect(q.body).toMatchObject({ usedToday: 4, leftToday: 0, warmUpLeft: 0, autoSend: true });
   });
 
   it('exports data', async () => {

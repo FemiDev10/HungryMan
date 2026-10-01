@@ -8,7 +8,7 @@ Setup: log in to the local API as in `/add-job` (ADMIN_PASSWORD from `apps/api/.
 
 **Indeed** — use the Indeed connector (`search_jobs`, `get_job_details`). If it isn't connected, tell me to connect "Indeed" under claude.ai Settings → Connectors, and continue with LinkedIn.
 - Search each keyword × location. General track: Newcastle upon Tyne and Sunderland, part-time / evening / night / weekend.
-- For each promising result, get the full details and POST to `/api/jobs/import` with `url, title, company, location, description` (the full advert text, not a summary), plus `salaryText` / `hoursText` if shown.
+- For each promising result, get the full details and POST to `/api/jobs/import` with `"source": "indeed"`, `url, title, company, location, description` (the full advert text, not a summary), plus `salaryText` / `hoursText` if shown.
 
 **LinkedIn** — use Claude in Chrome in my normal, logged-in Chrome. Behave like me browsing by hand:
 - Use LinkedIn's own Jobs search page with its filters (location, date posted "Past week", job type). No other LinkedIn pages, no profiles, no messages or connection requests.
