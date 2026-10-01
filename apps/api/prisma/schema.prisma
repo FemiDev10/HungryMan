@@ -510,9 +510,9 @@ model BrowserTask {
 model Settings {
   id                        Int        @id @default(1)
   agentState                AgentState @default(PAUSED)
-  professionalPerDay        Int        @default(10)
-  generalPerDay             Int        @default(10)
-  maxPerDay                 Int        @default(20)
+  professionalPerDay        Int        @default(15)
+  generalPerDay             Int        @default(25)
+  maxPerDay                 Int        @default(40)
   minMatchProfessional      Float      @default(55)
   minMatchGeneral           Float      @default(45)
   autoSubmit                Boolean    @default(true)
