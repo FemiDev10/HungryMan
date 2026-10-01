@@ -51,7 +51,11 @@ git checkout claude/job-search-project-r0wb04
 bash scripts/setup-mac.sh
 ```
 
-It installs Node.js 22 and PostgreSQL through Homebrew, creates the database and `apps/api/.env` with fresh secrets (asking you for a dashboard password), imports `~/oluwafemi-profile.json` or `~/Downloads/oluwafemi-profile.json` if present, and opens the dashboard.
+It needs Node.js 22+ (nodejs.org installer) and Postgres.app, then creates the database and `apps/api/.env` with fresh secrets (asking you for a dashboard password), imports `~/oluwafemi-profile.json` or `~/Downloads/oluwafemi-profile.json` if present, and opens the dashboard.
+
+### Keep it running
+
+`bash scripts/autostart-mac.sh` runs HungryMan in the background: it starts at login and restarts if it stops, so scheduled `/daily-run`s always find it. Logs go to `~/Library/Logs/hungryman.log`; turn it off with `--off`. In Postgres.app's settings, tick "Start automatically after login" too.
 
 ## Getting started
 
