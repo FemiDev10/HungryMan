@@ -80,7 +80,7 @@ export async function ensureDefaults() {
       id: 1,
       schedule: DEFAULT_SCHEDULE as unknown as Prisma.InputJsonValue,
       searchCriteria: {
-        professional: { keywords: ['product designer', 'ux designer', 'ui ux designer', 'ux researcher', 'frontend developer', 'react developer', 'product manager', 'graduate product designer'], locations: ['Newcastle upon Tyne', 'London', 'Remote'] },
+        professional: { keywords: ['product designer', 'ux designer', 'ui ux designer', 'ux researcher', 'frontend developer', 'frontend engineer', 'react developer', 'design engineer', 'ai engineer', 'product manager', 'graduate product designer'], locations: ['Newcastle upon Tyne', 'London', 'Manchester', 'Remote'] },
         general: { keywords: ['steward', 'crew member', 'kitchen porter', 'night shift', 'cleaner', 'warehouse operative', 'retail assistant'], locations: ['Newcastle upon Tyne', 'Sunderland'] },
       },
       defaultBrowserAgent: 'claude-chrome',

@@ -106,6 +106,19 @@ describe('eligibility (configurable work authorisation)', () => {
     it('applies when the advert offers sponsorship even if the name is not on the register', () => {
       expect(assessEligibility(fixtureJob({ sponsorLicensed: false, sponsorshipMention: 'OFFERED' }), route, 'PROFESSIONAL', at).status).toBe('POTENTIALLY_ELIGIBLE');
     });
+    it('considers Europe only with visa sponsorship or relocation, full-time, after the course', () => {
+      const berlin = (o: Parameters<typeof fixtureJob>[0] = {}) => fixtureJob({ location: 'Berlin, Germany', sponsorLicensed: false, ...o });
+      expect(assessEligibility(berlin(), route, 'PROFESSIONAL', at).status).toBe('NOT_ELIGIBLE'); // silent advert
+      const reloc = assessEligibility(berlin({ description: 'Frontend engineer (React). We offer relocation support and visa sponsorship for the EU Blue Card.' }), route, 'PROFESSIONAL', at);
+      expect(reloc).toMatchObject({ status: 'POTENTIALLY_ELIGIBLE', workContext: 'SPONSORED_AFTER_COURSE', earliestStart: '2027-01-31' });
+      expect(assessEligibility(berlin({ sponsorshipMention: 'OFFERED', employmentType: 'PART_TIME' }), route, 'PROFESSIONAL', at).status).toBe('NOT_ELIGIBLE');
+      expect(assessEligibility(berlin({ sponsorshipMention: 'OFFERED' }), route, 'GENERAL', at).status).toBe('NOT_ELIGIBLE');
+      // "London or Berlin" is still a UK job
+      expect(assessEligibility(fixtureJob({ location: 'London or Berlin', sponsorLicensed: true }), route, 'PROFESSIONAL', at).status).toBe('POTENTIALLY_ELIGIBLE');
+      const a = prepareAnswers(c, 'PROFESSIONAL', [], 'SPONSORED_AFTER_COURSE', 'Amsterdam, Netherlands');
+      expect(findAnswer('Will you require visa sponsorship?', a)?.answer).toBe('Yes');
+      expect(findAnswer('Do you have the right to work in the EU?', a)?.answer).toMatch(/^No\. I would need visa sponsorship/);
+    });
     it('skips "no sponsorship" adverts even from licensed sponsors', () => {
       expect(assessEligibility(fixtureJob({ sponsorLicensed: true, sponsorshipMention: 'NOT_OFFERED' }), route, 'PROFESSIONAL', at).status).toBe('NOT_ELIGIBLE');
     });

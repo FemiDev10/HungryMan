@@ -32,6 +32,18 @@ interface Period {
   label?: string;
 }
 
+// Places outside the UK (Europe mainly). A UK marker anywhere ("London or Berlin", "Remote UK/EU") keeps it a UK job.
+const NON_UK =
+  /\b(germany|deutschland|berlin|munich|münchen|hamburg|frankfurt|cologne|köln|stuttgart|netherlands|holland|amsterdam|rotterdam|the hague|utrecht|eindhoven|ireland|dublin|cork|galway|france|paris|lyon|toulouse|spain|madrid|barcelona|valencia|portugal|lisbon|porto|italy|milan|rome|turin|belgium|brussels|antwerp|ghent|luxembourg|switzerland|zurich|zürich|geneva|basel|austria|vienna|denmark|copenhagen|sweden|stockholm|gothenburg|malmö|norway|oslo|finland|helsinki|estonia|tallinn|latvia|riga|lithuania|vilnius|poland|warsaw|krakow|kraków|wroclaw|czech|czechia|prague|brno|hungary|budapest|romania|bucharest|greece|athens|cyprus|limassol|malta|croatia|slovenia|bulgaria|sofia|serbia|belgrade|europe|european union|emea)\b/i;
+const UK_MARKER = /\b(uk|u\.k\.|united kingdom|great britain|england|scotland|wales|northern ireland|britain|london|manchester|newcastle|sunderland|leeds|birmingham|edinburgh|glasgow|bristol|cardiff|belfast)\b/i;
+const RELOCATION = /\b(relocation (support|package|assistance|bonus)|help(ing)? (you )?relocate|we (will |can )?(sponsor|support) (your )?(work )?visa|visa (support|assistance)|eu blue card|blue card|work permit (support|sponsorship))\b/i;
+
+/** True when the job's location is outside the UK (e.g. Berlin, Amsterdam, Dublin, "Remote – Europe"). */
+export function outsideUk(location: string | null | undefined): boolean {
+  if (!location) return false;
+  return NON_UK.test(location) && !UK_MARKER.test(location);
+}
+
 const IMMEDIATE_START = /\b(immediate start|start immediately|available immediately|must be able to start (immediately|asap|now))\b/i;
 
 export function isStudent(auth: WorkAuthLike, at: Date): boolean {
@@ -114,6 +126,7 @@ export function assessEligibility(
     return { ...base, status: 'REQUIRES_REVIEW', reasons: ['Configured visa expiry date is in the past — update work authorisation.'], period, workContext: context };
   }
 
+  if (outsideUk(job.location)) return abroad(job, auth, track, base, period, now);
   if (context === 'SPONSORED_AFTER_COURSE') return sponsoredAfterCourse(job, auth, base, period);
 
   let status: Eligibility = 'ELIGIBLE';
@@ -235,4 +248,51 @@ function sponsoredAfterCourse(
 
   applyKnownRestrictions(job, auth, reasons, (x) => (status = worst(status, x)));
   return { ...base, status, reasons, period, workContext: 'SPONSORED_AFTER_COURSE', earliestStart };
+}
+
+/**
+ * Jobs outside the UK. Only full-time professional roles count, starting after the course (if studying), and only
+ * where the advert offers visa sponsorship or relocation help. The UK sponsor register doesn't apply abroad.
+ */
+function abroad(
+  job: JobLike,
+  auth: WorkAuthLike,
+  track: Track | null,
+  base: Pick<EligibilityDetails, 'assumedHoursPerWeek' | 'sponsorship' | 'earliestStart'>,
+  period: StudyPeriod,
+  now: Date,
+): EligibilityDetails {
+  const studying = isStudent(auth, now);
+  const workContext: WorkContext = studying ? 'SPONSORED_AFTER_COURSE' : 'STANDARD';
+  const earliestStart = studying && auth.courseEnd ? new Date(auth.courseEnd).toISOString().slice(0, 10) : null;
+  const text = `${job.title}\n${job.description}`;
+  const reasons: string[] = [`Outside the UK (${job.location}).`];
+  const s = base.sponsorship;
+  s.licensedSponsor = null;
+  s.registerName = null;
+  let status: Eligibility = 'POTENTIALLY_ELIGIBLE';
+
+  const fullTimeish = !['PART_TIME', 'ZERO_HOURS', 'TEMPORARY', 'INTERNSHIP'].includes(job.employmentType);
+  if (track !== 'PROFESSIONAL' || !fullTimeish) {
+    return { ...base, status: 'NOT_ELIGIBLE', reasons: [...reasons, 'Only full-time professional roles abroad are considered; part-time and temporary work must be in the UK.'], period, workContext, earliestStart };
+  }
+  if (s.mention === 'NOT_OFFERED') {
+    status = 'NOT_ELIGIBLE';
+    reasons.push('The advert says visa sponsorship is not offered.');
+  } else if (s.mention === 'OFFERED' || RELOCATION.test(text)) {
+    s.potentialOpportunity = true;
+    reasons.push(s.mention === 'OFFERED' ? 'The advert mentions visa sponsorship (not guaranteed).' : 'The advert offers relocation / visa support (not guaranteed).');
+  } else {
+    status = 'NOT_ELIGIBLE';
+    reasons.push("The advert doesn't offer visa sponsorship or relocation, so a non-EU candidate can't take it.");
+  }
+  if (studying) {
+    reasons.push(`Would start after the course ends${earliestStart ? ` (${earliestStart})` : ''}.`);
+    if (IMMEDIATE_START.test(text)) {
+      status = worst(status, 'NOT_ELIGIBLE');
+      reasons.push('Advert asks for an immediate start, but the role could only start after the course ends.');
+    }
+  }
+  applyKnownRestrictions(job, auth, reasons, (x) => (status = worst(status, x)));
+  return { ...base, status, reasons, period, workContext, earliestStart };
 }

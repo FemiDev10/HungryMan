@@ -1,4 +1,5 @@
 import type { Track, WorkContext } from '@prisma/client';
+import { outsideUk } from './eligibility.js';
 import { hasPhrase, normalize } from './text.js';
 import type { CandidateAvailability, CandidateLike, CandidatePreferences, LinkItem } from './types.js';
 
@@ -34,7 +35,7 @@ export const CONTEXT_OWNED_KEYS = new Set(['right_to_work_uk', 'requires_sponsor
 const fmtDate = (d: Date | string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
 /** Questions every application form tends to ask; answered straight from candidate data. */
-export function deriveStandardAnswers(c: CandidateLike, track: Track, context: WorkContext = 'STANDARD'): PreparedAnswer[] {
+export function deriveStandardAnswers(c: CandidateLike, track: Track, context: WorkContext = 'STANDARD', jobLocation?: string | null): PreparedAnswer[] {
   const auth = c.workAuthorisation;
   const avail = (c.availability ?? {}) as CandidateAvailability;
   const prefs = (c.preferences ?? {}) as CandidatePreferences;
@@ -48,7 +49,7 @@ export function deriveStandardAnswers(c: CandidateLike, track: Track, context: W
     { key: 'phone', question: 'Phone number', answer: c.phone ?? UNKNOWN, patterns: ['phone', 'mobile', 'telephone'] },
     { key: 'location', question: 'Current location', answer: [c.city, c.country].filter(Boolean).join(', ') || UNKNOWN, patterns: ['location', 'where are you based', 'city'] },
     { key: 'postcode', question: 'Postcode', answer: c.postcode ?? UNKNOWN, patterns: ['postcode', 'post code', 'zip'] },
-    ...workAuthAnswers(c, context),
+    ...workAuthAnswers(c, context, outsideUk(jobLocation) ? jobLocation! : null),
     { key: 'notice_period', question: 'What is your notice period?', answer: avail.noticePeriod ?? UNKNOWN, patterns: ['notice period', 'notice'] },
     {
       key: 'earliest_start',
@@ -86,8 +87,8 @@ export function deriveStandardAnswers(c: CandidateLike, track: Track, context: W
  * Merge candidate-data answers with the verified library. A *verified* library answer
  * overrides derived data; unverified library answers are only used where data is unknown.
  */
-export function prepareAnswers(c: CandidateLike, track: Track, library: AnswerTemplateLike[], context: WorkContext = 'STANDARD'): PreparedAnswer[] {
-  const byKey = new Map(deriveStandardAnswers(c, track, context).map((a) => [a.key, a]));
+export function prepareAnswers(c: CandidateLike, track: Track, library: AnswerTemplateLike[], context: WorkContext = 'STANDARD', jobLocation?: string | null): PreparedAnswer[] {
+  const byKey = new Map(deriveStandardAnswers(c, track, context, jobLocation).map((a) => [a.key, a]));
   for (const t of library) {
     if (t.track && t.track !== track) continue;
     if (CONTEXT_OWNED_KEYS.has(t.key)) continue;
@@ -122,7 +123,7 @@ export function findAnswer(question: string, answers: PreparedAnswer[]): Prepare
 
 type RawAnswer = Omit<PreparedAnswer, 'evidenceIds' | 'source'>;
 
-function workAuthAnswers(c: CandidateLike, context: WorkContext): RawAnswer[] {
+function workAuthAnswers(c: CandidateLike, context: WorkContext, abroadLocation: string | null = null): RawAnswer[] {
   const auth = c.workAuthorisation;
   const q = {
     rtw: { key: 'right_to_work_uk', question: 'Do you have the right to work in the UK?', patterns: ['right to work', 'eligible to work in the uk', 'legally entitled to work', 'authorised to work', 'authorized to work'] },
@@ -132,6 +133,15 @@ function workAuthAnswers(c: CandidateLike, context: WorkContext): RawAnswer[] {
   };
   if (!auth) return Object.values(q).map((x) => ({ ...x, answer: UNKNOWN }));
 
+  if (abroadLocation) {
+    const end = context === 'SPONSORED_AFTER_COURSE' && auth.courseEnd ? fmtDate(auth.courseEnd) : null;
+    return [
+      { ...q.rtw, answer: `No. I would need visa sponsorship / a work permit for this role${end ? `, starting after my UK course ends on ${end}` : ''}.` },
+      { ...q.sponsor, answer: 'Yes' },
+      { ...q.visa, answer: `UK ${auth.visaType} visa; I would need a work visa sponsored by the employer for this role` },
+      { ...q.hours, answer: end ? `No restrictions once the role starts after my course ends on ${end}, with a work visa.` : UNKNOWN },
+    ];
+  }
   if (context === 'SPONSORED_AFTER_COURSE') {
     const end = auth.courseEnd ? fmtDate(auth.courseEnd) : null;
     return [
