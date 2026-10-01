@@ -11,6 +11,8 @@ Private job-application agent: a Node/Express/Prisma API (`apps/api`) and a Reac
 - `/daily-run`: the whole day: find jobs, apply, cold emails, summarise replies (scheduled)
 - `/status`: summary of today
 
+Daily runs happen on the owner's Mac through Cowork (docs/COWORK.md): local app, local Chrome, Gmail, Indeed connector.
+
 ## Hard rules (never break these)
 - Never invent experience, employers, qualifications, licences (SIA, forklift, DBS) or immigration status. Everything on a CV or form must come from the approved candidate profile. Unknown answers stay `UNKNOWN` and go to the owner.
 - Never bypass CAPTCHAs, bot detection, login walls or rate limits. Report them as exceptions.

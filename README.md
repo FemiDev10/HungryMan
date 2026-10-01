@@ -53,6 +53,10 @@ bash scripts/setup-mac.sh
 
 It needs Node.js 22+ (nodejs.org installer) and Postgres.app, then creates the database and `apps/api/.env` with fresh secrets (asking you for a dashboard password), imports `~/oluwafemi-profile.json` or `~/Downloads/oluwafemi-profile.json` if present, and opens the dashboard.
 
+### Run it every day with Cowork
+
+Everything runs locally on your Mac. Cowork (Claude desktop app) does the daily work in your Chrome and Gmail on a schedule: see **[docs/COWORK.md](docs/COWORK.md)** for the one-time setup and the scheduled-task prompt.
+
 ### Keep it running
 
 `bash scripts/autostart-mac.sh` runs HungryMan in the background: it starts at login and restarts if it stops, so scheduled `/daily-run`s always find it. Logs go to `~/Library/Logs/hungryman.log`; turn it off with `--off`. In Postgres.app's settings, tick "Start automatically after login" too.
