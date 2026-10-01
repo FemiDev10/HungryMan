@@ -10,3 +10,4 @@ coverage/
 .DS_Store
 .profile-imported
 *-profile.json
+*.tsbuildinfo
