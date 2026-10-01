@@ -71,6 +71,8 @@ export function GeneralSettings({ s }: { s: Settings }) {
         reviewFirstN: f.reviewFirstN,
         monthlyIncomeGoal: f.monthlyIncomeGoal,
         outreachEmailsPerDay: f.outreachEmailsPerDay,
+        outreachAutoSend: f.outreachAutoSend,
+        outreachReviewFirstN: f.outreachReviewFirstN,
       }),
     { invalidate: [['settings'], ['overview'], ['checklist']], success: 'Settings saved' },
   );
@@ -126,6 +128,24 @@ export function GeneralSettings({ s }: { s: Settings }) {
               onChange={(e) => set('monthlyIncomeGoal', Number(e.target.value))}
             />
           </Field>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <Toggle
+              checked={f.autoSubmit && f.reviewFirstN === 0 && f.outreachAutoSend && f.outreachReviewFirstN === 0}
+              onChange={(v) =>
+                setF((x) => ({ ...x, autoSubmit: v ? true : x.autoSubmit, reviewFirstN: v ? 0 : 3, outreachAutoSend: v, outreachReviewFirstN: v ? 0 : 3 }))
+              }
+              label="Full autopilot"
+              description="Applications are submitted and cold emails are sent from your Gmail without asking you. Only CAPTCHAs, logins and questions your profile can't answer still come to you. Press Save after switching."
+            />
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <Toggle
+              checked={f.outreachAutoSend}
+              onChange={(v) => set('outreachAutoSend', v)}
+              label="Send cold emails automatically"
+              description="When off, Claude saves each email as a Gmail draft and you press send."
+            />
+          </div>
           <div className="sm:col-span-2 lg:col-span-3">
             <Toggle
               checked={f.autoSubmit}
