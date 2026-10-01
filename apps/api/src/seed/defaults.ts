@@ -66,6 +66,12 @@ export const DEFAULT_ANSWERS = [
   { key: 'behavioural_customer', category: 'BEHAVIOURAL', question: 'Describe a time you delivered great customer service.', patterns: ['customer service', 'difficult customer'] },
 ];
 
+/** Per-source pacing for applications. */
+const SOURCE_LIMITS: Record<string, { enabled: boolean; maxApplicationsPerHour: number; maxApplicationsPerDay: number; cooldownSeconds: number }> = {
+  manual: { enabled: true, maxApplicationsPerHour: 10, maxApplicationsPerDay: 20, cooldownSeconds: 0 },
+  indeed: { enabled: true, maxApplicationsPerHour: 8, maxApplicationsPerDay: 30, cooldownSeconds: 60 },
+};
+
 /** Idempotent: creates only what's missing, never overwrites user edits. */
 export async function ensureDefaults() {
   await prisma.settings.upsert({
@@ -103,10 +109,7 @@ export async function ensureDefaults() {
       where: { source: s.id },
       create: {
         source: s.id,
-        enabled: s.id === 'manual',
-        maxApplicationsPerHour: s.id === 'manual' ? 10 : 5,
-        maxApplicationsPerDay: 20,
-        cooldownSeconds: s.id === 'manual' ? 0 : 120,
+        ...(SOURCE_LIMITS[s.id] ?? { enabled: false, maxApplicationsPerHour: 5, maxApplicationsPerDay: 20, cooldownSeconds: 120 }),
         config: (DEFAULT_SOURCE_CONFIG[s.id] ?? {}) as Prisma.InputJsonValue,
       },
       update: {},

@@ -16,6 +16,7 @@ import { CvProfilesPage } from './pages/CvProfiles';
 import { AnswersPage } from './pages/Answers';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { AuditPage } from './pages/Audit';
+import { OutreachPage } from './pages/Outreach';
 import { NotFoundPage } from './pages/NotFound';
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -52,6 +53,7 @@ export function App() {
         <Route path="exceptions" element={<ExceptionsPage />} />
         <Route path="applications/:id" element={<ApplicationDetailPage />} />
         <Route path="import" element={<ImportJobPage />} />
+        <Route path="outreach" element={<OutreachPage />} />
         <Route path="profile" element={<CandidatePage />} />
         <Route path="cv-profiles" element={<CvProfilesPage />} />
         <Route path="answers" element={<AnswersPage />} />

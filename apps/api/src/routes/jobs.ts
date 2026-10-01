@@ -4,12 +4,14 @@ import { prisma } from '../db.js';
 import { analyseApplication } from '../pipeline/analyse.js';
 import { ingestJob } from '../pipeline/ingest.js';
 import { buildContext } from '../pipeline/orchestrator.js';
-import { listSources } from '../sources/registry.js';
+import { IMPORT_SOURCES, listSources } from '../sources/registry.js';
 import { rowInclude, toRow } from './views.js';
 
 export const jobsRouter = Router();
 
 const ImportSchema = z.object({
+  /** Where the advert was found; each source has its own pacing limits. */
+  source: z.enum(IMPORT_SOURCES).default('manual'),
   url: z.string().url(),
   title: z.string().min(1).max(300),
   company: z.string().min(1).max(300),
@@ -33,7 +35,7 @@ jobsRouter.post('/jobs/import', async (req, res) => {
   const b = ImportSchema.parse(req.body);
   const r = await ingestJob(
     {
-      source: 'manual',
+      source: b.source,
       sourceJobId: null,
       url: b.url,
       title: b.title,

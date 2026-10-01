@@ -42,7 +42,7 @@ export async function runDiscovery(opts: { manual?: boolean } = {}) {
 
   for (const cfg of configs) {
     const source = getSource(cfg.source);
-    if (!source || source.id === 'manual' || !source.available()) continue;
+    if (!source || 'importOnly' in source || !source.available()) continue;
     if (cfg.lastRunAt && Date.now() - cfg.lastRunAt.getTime() < cfg.cooldownSeconds * 1000 && !opts.manual) continue;
     if (await shouldStop(Boolean(opts.manual))) break;
     await setStatus({ currentTask: 'Discovering jobs', currentSource: source.label, currentStep: 'Searching', stepStartedAt: new Date() });

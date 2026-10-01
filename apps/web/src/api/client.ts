@@ -17,6 +17,8 @@ import type {
   Meta,
   Notification,
   Outcome,
+  Outreach,
+  OutreachQuota,
   Overview,
   Paged,
   ReviewItem,
@@ -181,6 +183,11 @@ export const api = {
   uploadSponsors: (csvBase64: string) => post<{ ok: true; rows: number; status: SponsorRegisterStatus }>('/sponsors/upload', { csvBase64 }),
   checkSponsor: (company: string) => request<SponsorCheck>(`/sponsors/check${qs({ company })}`),
   updateSource: (source: string, body: Partial<SourceConfig>) => put<SourceConfig>(`/sources/${encodeURIComponent(source)}`, body),
+
+  // outreach
+  outreach: (status?: string) => request<Outreach[]>(`/outreach${qs({ status })}`),
+  outreachQuota: () => request<OutreachQuota>('/outreach/quota'),
+  updateOutreach: (id: string, body: { status: 'SENT' | 'REPLIED' | 'SKIPPED'; note?: string }) => request<Outreach>(`/outreach/${id}`, { method: 'PATCH', body }),
 
   // audit / notifications / privacy
   audit: (p: { applicationId?: string; type?: string; page?: number; pageSize?: number }) =>

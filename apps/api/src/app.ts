@@ -4,7 +4,7 @@ import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import { ZodError } from 'zod';
-import { checkPassword, issueSession, loginAllowed, requireAgentToken, requireSession, SESSION_COOKIE } from './auth.js';
+import { checkPassword, issueSession, loginAllowed, requireAgentToken, requireSession, requireSessionOrAgent, SESSION_COOKIE } from './auth.js';
 import { env } from './config/env.js';
 import { audit } from './lib/audit.js';
 import { agentTasksRouter } from './routes/agentTasks.js';
@@ -14,6 +14,7 @@ import { configRouter } from './routes/config.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { jobsRouter } from './routes/jobs.js';
 import { miscRouter } from './routes/misc.js';
+import { outreachRouter } from './routes/outreach.js';
 
 export function createApp() {
   const app = express();
@@ -44,6 +45,10 @@ export function createApp() {
   // Browser-agent handoff API: bearer token only.
   app.use('/api', (req, res, next) => (req.path.startsWith('/agent-tasks') ? requireAgentToken(req, res, next) : next()));
   app.use('/api', agentTasksRouter);
+
+  // Cold-email outreach: used by Claude sessions (bearer token) and the dashboard.
+  app.use('/api', (req, res, next) => (req.path.startsWith('/outreach') ? requireSessionOrAgent(req, res, next) : next()));
+  app.use('/api', outreachRouter);
 
   // Everything else requires the dashboard session.
   app.use('/api', requireSession);

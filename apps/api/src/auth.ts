@@ -60,6 +60,11 @@ export function requireSession(req: Request, res: Response, next: NextFunction) 
   }
 }
 
+/** Either the dashboard session or the agent bearer token (for routes both the owner and Claude sessions use). */
+export function requireSessionOrAgent(req: Request, res: Response, next: NextFunction) {
+  return (req.headers.authorization ?? '').startsWith('Bearer ') ? requireAgentToken(req, res, next) : requireSession(req, res, next);
+}
+
 /** Browser agents (Cowork / Claude in Chrome) authenticate with a separate bearer token. */
 export function requireAgentToken(req: Request, res: Response, next: NextFunction) {
   if (!env.AGENT_API_TOKEN) return res.status(503).json({ error: 'AGENT_API_TOKEN is not configured on the server' });

@@ -237,6 +237,38 @@ suite('end-to-end pipeline (mock browser agent)', () => {
     expect(item('agent_token').done).toBe(true);
   });
 
+  it('gates cold emails: warm-up drafts, dedupe, company spacing, daily cap', async () => {
+    await agent.post('/api/agent/control').send({ action: 'RESUME' }).expect(200);
+    await agent.put('/api/settings').send({ outreachEmailsPerDay: 3, outreachReviewFirstN: 1 }).expect(200);
+    const bearer = { Authorization: 'Bearer agent-token' };
+    const email = (to: string, company: string) => ({
+      recipientEmail: to,
+      company,
+      sourceUrl: 'https://example.com/careers',
+      subject: 'Part-time kitchen porter: speculative application',
+      body: 'Hello, I am a student in Newcastle looking for part-time kitchen porter shifts. My CV is attached; I would be glad to come in for a trial shift.',
+      cvProfileSlug: 'kitchen-porter',
+      track: 'GENERAL',
+    });
+    await agent.post('/api/outreach').send(email('chef@cafe-one.example', 'Cafe One')).set({ Authorization: 'Bearer wrong' }).expect(401);
+
+    const first = await agent.post('/api/outreach').set(bearer).send(email('Chef@Cafe-One.example', 'Cafe One Ltd')).expect(201);
+    expect(first.body.mode).toBe('DRAFT');
+    const cv = await agent.get(first.body.cvDownloadPath).set(bearer).expect(200);
+    expect(cv.headers['content-type']).toContain('application/pdf');
+    await agent.post(`/api/outreach/${first.body.outreach.id}/result`).set(bearer).send({ status: 'SENT' }).expect(409); // warm-up: drafts only
+    await agent.post(`/api/outreach/${first.body.outreach.id}/result`).set(bearer).send({ status: 'DRAFTED', externalId: 'draft-1' }).expect(200);
+
+    await agent.post('/api/outreach').set(bearer).send(email('chef@cafe-one.example', 'Somewhere Else')).expect(409); // same address
+    await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-one.example', 'Cafe One')).expect(409); // same company this month
+    const second = await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-two.example', 'Cafe Two')).expect(201);
+    expect(second.body.mode).toBe('SEND');
+    await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-three.example', 'Cafe Three')).expect(201);
+    await agent.post('/api/outreach').set(bearer).send(email('jobs@cafe-four.example', 'Cafe Four')).expect(429); // daily cap of 3
+    const q = await agent.get('/api/outreach/quota').expect(200);
+    expect(q.body).toMatchObject({ usedToday: 3, leftToday: 0, warmUpLeft: 0 });
+  });
+
   it('exports data', async () => {
     const r = await agent.get('/api/privacy/export').expect(200);
     expect(r.body.candidate[0].fullName).toBe('Demo Candidate');

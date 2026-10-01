@@ -17,6 +17,7 @@ import {
   Settings,
   Sun,
   UserRound,
+  Mail,
   X,
 } from 'lucide-react';
 import { api } from '../api/client';
@@ -42,6 +43,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { to: '/exceptions', label: 'Exceptions', icon: AlertTriangle, badge: 'exceptions' },
       { to: '/history', label: 'History', icon: History },
       { to: '/import', label: 'Import job', icon: PlusCircle },
+      { to: '/outreach', label: 'Outreach', icon: Mail },
     ],
   },
   {

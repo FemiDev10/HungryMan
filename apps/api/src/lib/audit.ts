@@ -37,7 +37,13 @@ export type AuditType =
   | 'CANDIDATE_UPDATED'
   | 'DATA_EXPORTED'
   | 'DATA_DELETED'
-  | 'LOGIN';
+  | 'LOGIN'
+  | 'OUTREACH_PLANNED'
+  | 'OUTREACH_DRAFTED'
+  | 'OUTREACH_SENT'
+  | 'OUTREACH_REPLIED'
+  | 'OUTREACH_SKIPPED'
+  | 'OUTREACH_FAILED';
 
 export async function audit(
   type: AuditType,

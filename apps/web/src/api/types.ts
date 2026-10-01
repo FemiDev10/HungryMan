@@ -527,7 +527,36 @@ export interface Settings {
   termTimeOverride: null | 'TERM' | 'VACATION';
   reviewFirstN: number;
   monthlyIncomeGoal: number;
+  outreachEmailsPerDay: number;
+  outreachReviewFirstN: number;
   updatedAt?: string;
+}
+
+export type OutreachStatus = 'PLANNED' | 'DRAFTED' | 'SENT' | 'REPLIED' | 'SKIPPED' | 'FAILED';
+export interface Outreach {
+  id: string;
+  status: OutreachStatus;
+  track: Track | null;
+  recipientName: string | null;
+  recipientEmail: string;
+  recipientRole: string | null;
+  company: string;
+  jobId: string | null;
+  sourceUrl: string;
+  subject: string;
+  body: string;
+  cvProfileSlug: string | null;
+  warmUp: boolean;
+  note: string | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+export interface OutreachQuota {
+  perDay: number;
+  usedToday: number;
+  leftToday: number;
+  reviewFirstN: number;
+  warmUpLeft: number;
 }
 
 export interface SourceConfig {

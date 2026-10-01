@@ -524,6 +524,8 @@ model Settings {
   notifyChannels            Json       @default("{\"inApp\":true}")
   reviewFirstN              Int        @default(3)    // warm-up: first N real applications stop before submit
   monthlyIncomeGoal         Float      @default(1000)
+  outreachEmailsPerDay      Int        @default(10)
+  outreachReviewFirstN      Int        @default(3)    // first N cold emails are saved as Gmail drafts for the owner to check
   updatedAt                 DateTime   @updatedAt
 }
 
@@ -605,4 +607,38 @@ model SponsorRegisterMeta {
   sourceUrl   String?
   importedAt  DateTime?
   lastError   String?
+}
+
+enum OutreachStatus {
+  PLANNED   // recorded, not yet sent
+  DRAFTED   // saved as a Gmail draft for the owner to check (warm-up)
+  SENT
+  REPLIED
+  SKIPPED
+  FAILED
+}
+
+/// Cold / speculative emails sent from the owner's Gmail. One row per email, for daily caps, dedupe and history.
+model Outreach {
+  id             String         @id @default(cuid())
+  status         OutreachStatus @default(PLANNED)
+  track          Track?
+  recipientName  String?
+  recipientEmail String
+  recipientRole  String?
+  company        String
+  jobId          String?
+  sourceUrl      String         // where the address is published (advert, company contact/careers page)
+  subject        String
+  body           String
+  cvProfileSlug  String?
+  warmUp         Boolean        @default(false)
+  externalId     String?        // Gmail message or draft id
+  note           String?
+  sentAt         DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([createdAt])
+  @@index([recipientEmail])
 }
