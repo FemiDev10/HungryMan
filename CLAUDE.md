@@ -1,5 +1,7 @@
 # HungryMan
 
+**New session? Read HANDOFF.md first.**
+
 Private job-application agent: a Node/Express/Prisma API (`apps/api`) and a React dashboard (`apps/web`). It runs locally on the owner's Mac.
 
 ## Commands
